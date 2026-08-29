@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==============================
+// USUARIOS Y ROLES (EP-08)
+// ==============================
+enum Rol {
+  CLIENTE
+  ADMINISTRADOR
+  PROVEEDOR
+}
+
+model Usuario {
+  id        String   @id @default(uuid())
+  nombre    String
+  email     String   @unique
+  password  String
+  rol       Rol      @default(CLIENTE)
+  creadoEn  DateTime @default(now())
+
+  alquileres     Alquiler[]
+  conjuntosCreados Conjunto[] @relation("ConjuntosCreadosPorUsuario")
+  notificaciones Notificacion[]
+}
+
+// ==============================
+// CATÁLOGO (EP-02)
+// ==============================
+enum TipoPieza {
+  SOMBRERO
+  CAMISA_POLO
+  PANTALON
+  ZAPATO_ZAPATILLA
+  ABRIGO
+  CHALECO
+  TRAJE
+  TACON
+  ACCESORIO
+}
+
+model Pieza {
+  id            String    @id @default(uuid())
+  nombre        String
+  tipo          TipoPieza
+  tallaEEUU     String
+  color         String
+  modelo        String?
+  temporadaOriginal String // temporada/evento al que pertenece originalmente
+  stock         Int       @default(0)
+  precioAlquiler Decimal  @db.Decimal(10, 2)
+  creadoEn      DateTime  @default(now())
+
+  proveedores       PiezaProveedor[]
+  conjuntos         ConjuntoPieza[]
+  alquilerItems     AlquilerPieza[]
+  devolucionItems   DevolucionPieza[]
+  ordenesReabastecimiento OrdenReabastecimiento[]
+
+  // Reglas de compatibilidad (relación reflexiva muchos-a-muchos)
+  compatibleCon     ReglaCompatibilidad[] @relation("PiezaOrigen")
+  compatibleDesde   ReglaCompatibilidad[] @relation("PiezaDestino")
+}
+
+// ==============================
+// CONJUNTOS DINÁMICOS (EP-03)
+// ==============================
+enum TipoConjunto {
+  PREDETERMINADO   // conjunto original de fábrica, por temporada
+  PERSONALIZADO    // armado por el cliente combinando piezas de distintos conjuntos
+}
+
+model Conjunto {
+  id              String       @id @default(uuid())
+  nombre          String
+  tipo            TipoConjunto
+  temporadaEvento String       // temporada/evento al que aplica este conjunto
+  creadoPorId     String?      // solo aplica si tipo = PERSONALIZADO
+  creadoPor       Usuario?     @relation("ConjuntosCreadosPorUsuario", fields: [creadoPorId], references: [id])
+  creadoEn        DateTime     @default(now())
+
+  piezas          ConjuntoPieza[]
+  alquileres      Alquiler[]
+}
+
+// Tabla intermedia: qué piezas conforman cada conjunto
+model ConjuntoPieza {
+  id         String   @id @default(uuid())
+  conjuntoId String
+  piezaId    String
+  conjunto   Conjunto @relation(fields: [conjuntoId], references: [id])
+  pieza      Pieza    @relation(fields: [piezaId], references: [id])
+
+  @@unique([conjuntoId, piezaId])
+}
+
+// Reglas de compatibilidad definidas por el administrador (EP-03, HU "reglas de compatibilidad")
+model ReglaCompatibilidad {
+  id              String   @id @default(uuid())
+  piezaOrigenId   String
+  piezaDestinoId  String
+  eventoAplicable String   // evento/temporada donde aplica esta regla
+  piezaOrigen     Pieza    @relation("PiezaOrigen", fields: [piezaOrigenId], references: [id])
+  piezaDestino    Pieza    @relation("PiezaDestino", fields: [piezaDestinoId], references: [id])
+
+  @@unique([piezaOrigenId, piezaDestinoId, eventoAplicable])
+}
+
+// ==============================
+// PROVEEDORES (EP-04)
+// ==============================
+model Proveedor {
+  id        String   @id @default(uuid())
+  nombre    String
+  contacto  String
+  telefono  String?
+  email     String?
+  creadoEn  DateTime @default(now())
+
+  piezas    PiezaProveedor[]
+  ordenes   OrdenReabastecimiento[]
+}
+
+model PiezaProveedor {
+  id          String    @id @default(uuid())
+  piezaId     String
+  proveedorId String
+  pieza       Pieza     @relation(fields: [piezaId], references: [id])
+  proveedor   Proveedor @relation(fields: [proveedorId], references: [id])
+
+  @@unique([piezaId, proveedorId])
+}
+
+enum EstadoOrden {
+  SOLICITADA
+  EN_CAMINO
+  RECIBIDA
+  CANCELADA
+}
+
+model OrdenReabastecimiento {
+  id             String      @id @default(uuid())
+  piezaId        String
+  proveedorId    String
+  cantidad       Int
+  estado         EstadoOrden @default(SOLICITADA)
+  fechaSolicitud DateTime    @default(now())
+  fechaEntrega   DateTime?
+  pieza          Pieza       @relation(fields: [piezaId], references: [id])
+  proveedor      Proveedor   @relation(fields: [proveedorId], references: [id])
+}
+
+// ==============================
+// ALQUILERES Y RESERVAS (EP-05)
+// ==============================
+enum EstadoAlquiler {
+  PENDIENTE
+  ACTIVO
+  FINALIZADO
+  CANCELADO
+}
+
+model Alquiler {
+  id           String         @id @default(uuid())
+  usuarioId    String
+  conjuntoId   String?        // referencia opcional al conjunto (predeterminado o personalizado) usado
+  fechaInicio  DateTime
+  fechaFin     DateTime
+  estado       EstadoAlquiler @default(PENDIENTE)
+  montoTotal   Decimal        @db.Decimal(10, 2)
+  creadoEn     DateTime       @default(now())
+
+  usuario      Usuario        @relation(fields: [usuarioId], references: [id])
+  conjunto     Conjunto?      @relation(fields: [conjuntoId], references: [id])
+  piezas       AlquilerPieza[]
+  devolucion   Devolucion?
+  pago         Pago?
+}
+
+// Piezas específicas incluidas en cada alquiler (permite combinaciones ad-hoc)
+model AlquilerPieza {
+  id             String   @id @default(uuid())
+  alquilerId     String
+  piezaId        String
+  precioUnitario Decimal  @db.Decimal(10, 2)
+  alquiler       Alquiler @relation(fields: [alquilerId], references: [id])
+  pieza          Pieza    @relation(fields: [piezaId], references: [id])
+}
+
+// ==============================
+// DEVOLUCIONES (EP-06)
+// ==============================
+enum EstadoDevolucion {
+  PENDIENTE
+  APROBADA
+  CON_OBSERVACIONES
+  RECHAZADA
+}
+
+model Devolucion {
+  id               String           @id @default(uuid())
+  alquilerId       String           @unique
+  fechaDevolucion  DateTime
+  estado           EstadoDevolucion @default(PENDIENTE)
+  penalidad        Decimal?         @db.Decimal(10, 2)
+  observaciones    String?
+  creadoEn         DateTime         @default(now())
+
+  alquiler         Alquiler         @relation(fields: [alquilerId], references: [id])
+  piezas           DevolucionPieza[]
+}
+
+enum EstadoPiezaDevuelta {
+  BUEN_ESTADO
+  DANADA
+  FALTANTE
+}
+
+model DevolucionPieza {
+  id             String              @id @default(uuid())
+  devolucionId   String
+  piezaId        String
+  estadoPieza    EstadoPiezaDevuelta
+  observacion    String?
+  devolucion     Devolucion          @relation(fields: [devolucionId], references: [id])
+  pieza          Pieza               @relation(fields: [piezaId], references: [id])
+}
+
+// ==============================
+// PAGOS FICTICIOS (EP-07)
+// ==============================
+enum EstadoPago {
+  APROBADO
+  RECHAZADO
+  REEMBOLSADO
+}
+
+model Pago {
+  id           String     @id @default(uuid())
+  alquilerId   String     @unique
+  monto        Decimal    @db.Decimal(10, 2)
+  metodo       String     @default("TARJETA_SIMULADA")
+  estado       EstadoPago
+  comprobante  String     // código simulado del comprobante
+  creadoEn     DateTime   @default(now())
+
+  alquiler     Alquiler   @relation(fields: [alquilerId], references: [id])
+}
+
+// ==============================
+// NOTIFICACIONES (apoyo a EP-05)
+// ==============================
+model Notificacion {
+  id         String   @id @default(uuid())
+  usuarioId  String
+  mensaje    String
+  leido      Boolean  @default(false)
+  creadoEn   DateTime @default(now())
+
+  usuario    Usuario  @relation(fields: [usuarioId], references: [id])
+}
