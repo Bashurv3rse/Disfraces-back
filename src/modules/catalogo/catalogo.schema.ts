@@ -12,3 +12,8 @@ export const crearPiezaSchema = z.object({
 });
 
 export type CrearPiezaInput = z.infer<typeof crearPiezaSchema>;
+export const actualizarStockSchema = z.object({
+  stock: z.number().int().min(0),
+});
+
+export type ActualizarStockInput = z.infer<typeof actualizarStockSchema>;
