@@ -4,8 +4,25 @@ import { CrearPiezaInput } from "./catalogo.schema";
 export function crearPieza(datos: CrearPiezaInput) {
   return prisma.pieza.create({ data: datos });
 }
-export function listarPiezas() {
-  return prisma.pieza.findMany({ orderBy: { creadoEn: "desc" } });
+interface FiltrosPieza {
+  tipo?: string;
+  tallaEEUU?: string;
+  color?: string;
+  temporadaOriginal?: string;
+  modelo?: string;
+}
+
+export function listarPiezas(filtros: FiltrosPieza) {
+  return prisma.pieza.findMany({
+    where: {
+      ...(filtros.tipo && { tipo: filtros.tipo as any }),
+      ...(filtros.tallaEEUU && { tallaEEUU: filtros.tallaEEUU }),
+      ...(filtros.color && { color: { equals: filtros.color, mode: "insensitive" } }),
+      ...(filtros.temporadaOriginal && { temporadaOriginal: { equals: filtros.temporadaOriginal, mode: "insensitive" } }),
+      ...(filtros.modelo && { modelo: { equals: filtros.modelo, mode: "insensitive" } }),
+    },
+    orderBy: { creadoEn: "desc" },
+  });
 }
 
 export function obtenerPiezaPorId(id: string) {

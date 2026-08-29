@@ -13,8 +13,17 @@ export async function crear(req: Request, res: Response) {
   const pieza = await crearPieza(parseo.data);
   return res.status(201).json(pieza);
 }
-export async function listar(_req: Request, res: Response) {
-  const piezas = await listarPiezas();
+export async function listar(req: Request, res: Response) {
+  const { tipo, tallaEEUU, color, temporadaOriginal, modelo } = req.query;
+
+  const piezas = await listarPiezas({
+    tipo: tipo as string,
+    tallaEEUU: tallaEEUU as string,
+    color: color as string,
+    temporadaOriginal: temporadaOriginal as string,
+    modelo: modelo as string,
+  });
+
   return res.json(piezas);
 }
 
