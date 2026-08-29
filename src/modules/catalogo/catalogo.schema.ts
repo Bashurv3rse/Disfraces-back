@@ -1,0 +1,14 @@
+import { z } from "zod";
+
+export const crearPiezaSchema = z.object({
+  nombre: z.string().min(2),
+  tipo: z.enum(["SOMBRERO", "CAMISA_POLO", "PANTALON", "ZAPATO_ZAPATILLA", "ABRIGO", "CHALECO", "TRAJE", "TACON", "ACCESORIO"]),
+  tallaEEUU: z.string().min(1),
+  color: z.string().min(1),
+  modelo: z.string().optional(),
+  temporadaOriginal: z.string().min(1),
+  stock: z.number().int().min(0),
+  precioAlquiler: z.number().positive(),
+});
+
+export type CrearPiezaInput = z.infer<typeof crearPiezaSchema>;
