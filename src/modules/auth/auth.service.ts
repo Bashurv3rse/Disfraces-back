@@ -51,3 +51,22 @@ function sinPassword(usuario: { password: string; [key: string]: any }) {
   const { password, ...resto } = usuario;
   return resto;
 }
+export function listarUsuarios() {
+  return prisma.usuario.findMany({
+    select: { id: true, nombre: true, email: true, rol: true, creadoEn: true },
+    orderBy: { creadoEn: "desc" },
+  });
+}
+
+export async function actualizarRolUsuario(id: string, rol: string) {
+  const usuario = await prisma.usuario.findUnique({ where: { id } });
+  if (!usuario) {
+    throw new Error("Usuario no encontrado");
+  }
+
+  return prisma.usuario.update({
+    where: { id },
+    data: { rol: rol as any },
+    select: { id: true, nombre: true, email: true, rol: true, creadoEn: true },
+  });
+}

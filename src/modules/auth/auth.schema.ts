@@ -13,3 +13,8 @@ export const loginSchema = z.object({
 
 export type RegistroInput = z.infer<typeof registroSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export const actualizarRolSchema = z.object({
+  rol: z.enum(["CLIENTE", "ADMINISTRADOR", "PROVEEDOR"]),
+});
+
+export type ActualizarRolInput = z.infer<typeof actualizarRolSchema>;
