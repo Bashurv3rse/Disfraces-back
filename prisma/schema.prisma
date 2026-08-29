@@ -1,0 +1,30 @@
+// Esquema inicial de referencia — completar en Sprint 2 según el MER definido en Sprint 1
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id        String   @id @default(uuid())
+  nombre    String
+  email     String   @unique
+  password  String
+  rol       String   // cliente | administrador | proveedor
+  creadoEn  DateTime @default(now())
+}
+
+model Pieza {
+  id         String   @id @default(uuid())
+  nombre     String
+  tipo       String   // sombrero, camisa, pantalon, zapatos, abrigo, chaleco, traje, tacon, accesorio
+  talla      String   // formato EEUU
+  color      String
+  modelo     String?
+  temporada  String
+  stock      Int      @default(0)
+  creadoEn   DateTime @default(now())
+}
