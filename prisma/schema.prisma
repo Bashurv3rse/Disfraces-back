@@ -171,6 +171,7 @@ model Alquiler {
   conjuntoId   String?        // referencia opcional al conjunto (predeterminado o personalizado) usado
   fechaInicio  DateTime
   fechaFin     DateTime
+  evento       String?
   estado       EstadoAlquiler @default(PENDIENTE)
   montoTotal   Decimal        @db.Decimal(10, 2)
   creadoEn     DateTime       @default(now())
@@ -264,3 +265,4 @@ model Notificacion {
 
   usuario    Usuario  @relation(fields: [usuarioId], references: [id])
 }
+
