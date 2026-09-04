@@ -6,6 +6,7 @@ import { catalogoRouter } from "./modules/catalogo/catalogo.routes";
 import { conjuntosRouter } from "./modules/conjuntos/conjuntos.routes";
 import { proveedoresRouter } from "./modules/proveedores/proveedores.routes";
 import { alquileresRouter } from "./modules/alquileres/alquileres.routes";
+import { devolucionesRouter } from "./modules/devoluciones/devoluciones.routes";
 
 dotenv.config();
 
@@ -17,6 +18,7 @@ app.use("/api/catalogo", catalogoRouter);
 app.use("/api/conjuntos", conjuntosRouter);
 app.use("/api/proveedores", proveedoresRouter);
 app.use("/api/alquileres", alquileresRouter);
+app.use("/api/devoluciones", devolucionesRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "disfraces-alquiler-backend" });
