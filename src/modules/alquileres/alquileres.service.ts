@@ -23,6 +23,7 @@ const ETIQUETA_TIPO: Record<string, string> = {
 export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string) {
   const piezas = await prisma.pieza.findMany({ where: { id: { in: datos.piezaIds } } });
   const montoTotal = piezas.reduce((suma: number, p: PiezaResumen) => suma + Number(p.precioAlquiler), 0);
+  const montoGarantia = Math.round(montoTotal * 0.2 * 100) / 100;
 
   return prisma.alquiler.create({
     data: {
@@ -31,6 +32,7 @@ export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string
       fechaFin: new Date(datos.fechaFin),
       evento: datos.evento,
       montoTotal,
+      montoGarantia,
       piezas: {
         create: piezas.map((p: PiezaResumen) => ({ piezaId: p.id, precioUnitario: p.precioAlquiler as any })),
       },
@@ -73,9 +75,12 @@ export async function resumenAdmin() {
   hace7Dias.setDate(hace7Dias.getDate() - 6);
   hace7Dias.setHours(0, 0, 0, 0);
 
+  const ahora = new Date();
+
   const [
     totalAlquileres,
     alquileresActivos,
+    alquileresProximos,
     alquileresDelMes,
     ultimos,
     alquileresUltimos4Meses,
@@ -85,7 +90,9 @@ export async function resumenAdmin() {
     devolucionesPendientes,
   ] = await Promise.all([
     prisma.alquiler.count(),
-    prisma.alquiler.count({ where: { estado: "ACTIVO" } }),
+    // "Activo" = el periodo de alquiler ya empezó y todavía no termina (no solo que no se haya devuelto).
+    prisma.alquiler.count({ where: { estado: "ACTIVO", fechaInicio: { lte: ahora }, fechaFin: { gte: ahora } } }),
+    prisma.alquiler.count({ where: { estado: "ACTIVO", fechaInicio: { gt: ahora } } }),
     prisma.alquiler.findMany({ where: { creadoEn: { gte: inicioMes } }, select: { montoTotal: true } }),
     prisma.alquiler.findMany({
       take: 5,
@@ -155,6 +162,7 @@ export async function resumenAdmin() {
   return {
     totalAlquileres,
     alquileresActivos,
+    alquileresProximos,
     ingresosMes,
     devolucionesPendientes,
     ultimosAlquileres: ultimos.map((a: any) => ({

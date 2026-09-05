@@ -12,6 +12,7 @@ export async function crearDevolucion(datos: CrearDevolucionInput, usuarioId: st
       alquilerId: datos.alquilerId,
       fechaDevolucion: new Date(datos.fechaDevolucion),
       observaciones: datos.observaciones,
+      estadoProducto: datos.estadoProducto,
     },
   });
 
