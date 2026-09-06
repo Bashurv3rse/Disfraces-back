@@ -2,24 +2,25 @@ import { prisma } from "../../config/prisma";
 import { CrearPiezaInput } from "./catalogo.schema";
 
 export function crearPieza(datos: CrearPiezaInput) {
-  return prisma.pieza.create({ data: datos });
+  return prisma.pieza.create({ data: datos as any });
 }
+
 interface FiltrosPieza {
-  tipo?: string;
-  tallaEEUU?: string;
-  color?: string;
-  temporadaOriginal?: string;
-  modelo?: string;
+  nombre?: string;
+  tipos?: string[];
+  temporadas?: string[];
+  colores?: string[];
 }
 
 export function listarPiezas(filtros: FiltrosPieza) {
   return prisma.pieza.findMany({
     where: {
-      ...(filtros.tipo && { tipo: filtros.tipo as any }),
-      ...(filtros.tallaEEUU && { tallaEEUU: filtros.tallaEEUU }),
-      ...(filtros.color && { color: { equals: filtros.color, mode: "insensitive" } }),
-      ...(filtros.temporadaOriginal && { temporadaOriginal: { equals: filtros.temporadaOriginal, mode: "insensitive" } }),
-      ...(filtros.modelo && { modelo: { equals: filtros.modelo, mode: "insensitive" } }),
+      ...(filtros.nombre && { nombre: { contains: filtros.nombre, mode: "insensitive" } }),
+      ...(filtros.tipos?.length && { tipo: { in: filtros.tipos as any } }),
+      ...(filtros.temporadas?.length && {
+        temporadaOriginal: { in: filtros.temporadas, mode: "insensitive" },
+      }),
+      ...(filtros.colores?.length && { coloresDisponibles: { hasSome: filtros.colores } }),
     },
     orderBy: { creadoEn: "desc" },
   });
@@ -31,4 +32,12 @@ export function obtenerPiezaPorId(id: string) {
 
 export function actualizarStock(id: string, stock: number) {
   return prisma.pieza.update({ where: { id }, data: { stock } });
+}
+
+export async function obtenerTemporadasDisponibles() {
+  const filas = await prisma.pieza.findMany({
+    select: { temporadaOriginal: true },
+    distinct: ["temporadaOriginal"],
+  });
+  return filas.map((f: { temporadaOriginal: string }) => f.temporadaOriginal);
 }

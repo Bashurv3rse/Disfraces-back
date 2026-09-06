@@ -9,9 +9,12 @@ export const crearPiezaSchema = z.object({
   temporadaOriginal: z.string().min(1),
   stock: z.number().int().min(0),
   precioAlquiler: z.number().positive(),
+  tallasDisponibles: z.array(z.string()).min(1).optional(),
+  coloresDisponibles: z.array(z.string()).min(1).optional(),
 });
 
 export type CrearPiezaInput = z.infer<typeof crearPiezaSchema>;
+
 export const actualizarStockSchema = z.object({
   stock: z.number().int().min(0),
 });

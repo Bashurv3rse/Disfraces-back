@@ -21,8 +21,11 @@ const ETIQUETA_TIPO: Record<string, string> = {
 };
 
 export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string) {
-  const piezas = await prisma.pieza.findMany({ where: { id: { in: datos.piezaIds } } });
-  const montoTotal = piezas.reduce((suma: number, p: PiezaResumen) => suma + Number(p.precioAlquiler), 0);
+  const piezaIds = datos.piezas.map((p) => p.piezaId);
+  const piezasCatalogo = await prisma.pieza.findMany({ where: { id: { in: piezaIds } } });
+  const porId = new Map(piezasCatalogo.map((p: PiezaResumen) => [p.id, p]));
+
+  const montoTotal = piezasCatalogo.reduce((suma: number, p: PiezaResumen) => suma + Number(p.precioAlquiler), 0);
   const montoGarantia = Math.round(montoTotal * 0.2 * 100) / 100;
 
   return prisma.alquiler.create({
@@ -34,7 +37,15 @@ export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string
       montoTotal,
       montoGarantia,
       piezas: {
-        create: piezas.map((p: PiezaResumen) => ({ piezaId: p.id, precioUnitario: p.precioAlquiler as any })),
+        create: datos.piezas.map((item) => {
+          const pieza = porId.get(item.piezaId) as PiezaResumen;
+          return {
+            piezaId: item.piezaId,
+            precioUnitario: pieza.precioAlquiler as any,
+            tallaElegida: item.tallaElegida,
+            colorElegido: item.colorElegido,
+          };
+        }),
       },
     },
     include: { piezas: { include: { pieza: true } } },
