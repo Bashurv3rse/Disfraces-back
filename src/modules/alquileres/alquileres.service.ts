@@ -34,6 +34,7 @@ export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string
       fechaInicio: new Date(datos.fechaInicio),
       fechaFin: new Date(datos.fechaFin),
       evento: datos.evento,
+      estado: "ACTIVO",
       montoTotal,
       montoGarantia,
       piezas: {
