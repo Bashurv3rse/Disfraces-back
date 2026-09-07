@@ -88,6 +88,7 @@ export async function resumenAdmin() {
   hace7Dias.setHours(0, 0, 0, 0);
 
   const ahora = new Date();
+  const hoyUTC = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate()));
 
   const [
     totalAlquileres,
@@ -103,8 +104,8 @@ export async function resumenAdmin() {
   ] = await Promise.all([
     prisma.alquiler.count(),
     // "Activo" = el periodo de alquiler ya empezó y todavía no termina (no solo que no se haya devuelto).
-    prisma.alquiler.count({ where: { estado: "ACTIVO", fechaInicio: { lte: ahora }, fechaFin: { gte: ahora } } }),
-    prisma.alquiler.count({ where: { estado: "ACTIVO", fechaInicio: { gt: ahora } } }),
+    prisma.alquiler.count({ where: { estado: "ACTIVO", fechaInicio: { lte: ahora }, fechaFin: { gte: hoyUTC } } }),
+    prisma.alquiler.count({ where: { estado: "ACTIVO", fechaInicio: { gt: hoyUTC } } }),
     prisma.alquiler.findMany({ where: { creadoEn: { gte: inicioMes } }, select: { montoTotal: true } }),
     prisma.alquiler.findMany({
       take: 5,
