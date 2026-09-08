@@ -55,6 +55,8 @@ model Pieza {
   stock         Int       @default(0)
   precioAlquiler Decimal  @db.Decimal(10, 2)
   creadoEn      DateTime  @default(now())
+  tallasDisponibles  String[]  @default([])
+  coloresDisponibles String[]  @default([])
 
   proveedores       PiezaProveedor[]
   conjuntos         ConjuntoPieza[]
@@ -171,9 +173,13 @@ model Alquiler {
   conjuntoId   String?        // referencia opcional al conjunto (predeterminado o personalizado) usado
   fechaInicio  DateTime
   fechaFin     DateTime
+  evento       String?
   estado       EstadoAlquiler @default(PENDIENTE)
   montoTotal   Decimal        @db.Decimal(10, 2)
+  montoGarantia Decimal @default(0) @db.Decimal(10, 2)
   creadoEn     DateTime       @default(now())
+  tallaElegida   String?
+  colorElegido   String?
 
   usuario      Usuario        @relation(fields: [usuarioId], references: [id])
   conjunto     Conjunto?      @relation(fields: [conjuntoId], references: [id])
@@ -188,6 +194,8 @@ model AlquilerPieza {
   alquilerId     String
   piezaId        String
   precioUnitario Decimal  @db.Decimal(10, 2)
+  tallaElegida   String?
+  colorElegido   String?
   alquiler       Alquiler @relation(fields: [alquilerId], references: [id])
   pieza          Pieza    @relation(fields: [piezaId], references: [id])
 }
@@ -202,6 +210,11 @@ enum EstadoDevolucion {
   RECHAZADA
 }
 
+enum EstadoProductoDevuelto {
+  BUENO
+  MALO
+}
+
 model Devolucion {
   id               String           @id @default(uuid())
   alquilerId       String           @unique
@@ -210,6 +223,8 @@ model Devolucion {
   penalidad        Decimal?         @db.Decimal(10, 2)
   observaciones    String?
   creadoEn         DateTime         @default(now())
+  estadoProducto  EstadoProductoDevuelto?
+  
 
   alquiler         Alquiler         @relation(fields: [alquilerId], references: [id])
   piezas           DevolucionPieza[]
@@ -264,3 +279,4 @@ model Notificacion {
 
   usuario    Usuario  @relation(fields: [usuarioId], references: [id])
 }
+
