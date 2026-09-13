@@ -7,14 +7,14 @@ export function crearProveedor(datos: CrearProveedorInput) {
 
 export function listarProveedores() {
   return prisma.proveedor.findMany({
-    include: { piezas: { include: { pieza: true } } },
+    include: { prendas: { include: { prenda: true } } },
     orderBy: { creadoEn: "desc" },
   });
 }
 
-export function asociarPieza(proveedorId: string, piezaId: string) {
-  return prisma.piezaProveedor.create({
-    data: { proveedorId, piezaId },
-    include: { pieza: true, proveedor: true },
+export function asociarPrenda(proveedorId: string, prendaId: string) {
+  return prisma.prendaProveedor.create({
+    data: { proveedorId, prendaId },
+    include: { prenda: true, proveedor: true },
   });
 }

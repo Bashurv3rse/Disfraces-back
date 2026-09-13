@@ -8,16 +8,15 @@ export async function crear(req: Request, res: Response) {
     return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
   }
   try {
-    const devolucion = await crearDevolucion(parseo.data, req.usuario!.id);
-    return res.status(201).json(devolucion);
+    const resultado = await crearDevolucion(parseo.data, req.usuario!.id);
+    return res.status(201).json(resultado);
   } catch (error: any) {
     return res.status(404).json({ mensaje: error.message });
   }
 }
 
 export async function listar(_req: Request, res: Response) {
-  const devoluciones = await listarDevoluciones();
-  return res.json(devoluciones);
+  return res.json(await listarDevoluciones());
 }
 
 export async function actualizarEstado(req: Request, res: Response) {
@@ -25,6 +24,5 @@ export async function actualizarEstado(req: Request, res: Response) {
   if (!parseo.success) {
     return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
   }
-  const devolucion = await actualizarEstadoDevolucion(req.params.id, parseo.data.estado);
-  return res.json(devolucion);
+  return res.json(await actualizarEstadoDevolucion(req.params.id, parseo.data.estado));
 }

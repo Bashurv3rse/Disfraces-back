@@ -4,15 +4,7 @@ export const crearAlquilerSchema = z.object({
   fechaInicio: z.string().min(1),
   fechaFin: z.string().min(1),
   evento: z.string().optional(),
-  piezas: z
-    .array(
-      z.object({
-        piezaId: z.string().uuid(),
-        tallaElegida: z.string().optional(),
-        colorElegido: z.string().optional(),
-      })
-    )
-    .min(1, "Debe incluir al menos una pieza"),
+  disfraces: z.array(z.string().uuid()).min(1, "Debe incluir al menos un disfraz"),
 });
 
 export type CrearAlquilerInput = z.infer<typeof crearAlquilerSchema>;

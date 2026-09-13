@@ -7,8 +7,8 @@ export const crearProveedorSchema = z.object({
   email: z.string().email().optional(),
 });
 
-export const asociarPiezaSchema = z.object({
-  piezaId: z.string().uuid(),
+export const asociarPrendaSchema = z.object({
+  prendaId: z.string().uuid(),
 });
 
 export type CrearProveedorInput = z.infer<typeof crearProveedorSchema>;
