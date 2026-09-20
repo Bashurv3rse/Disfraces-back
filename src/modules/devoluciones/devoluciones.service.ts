@@ -18,7 +18,10 @@ async function buscarDonante(tipo: string, prendaNecesitadaId: string) {
 }
 
 export async function crearDevolucion(datos: CrearDevolucionInput, usuarioId: string) {
-  const alquiler = await prisma.alquiler.findFirst({ where: { id: datos.alquilerId, usuarioId } });
+  const alquiler = await prisma.alquiler.findFirst({
+    where: { id: datos.alquilerId, usuarioId },
+    include: { disfraces: true },
+  });
   if (!alquiler) {
     throw new Error("Alquiler no encontrado");
   }
@@ -28,6 +31,7 @@ export async function crearDevolucion(datos: CrearDevolucionInput, usuarioId: st
       alquilerId: datos.alquilerId,
       fechaDevolucion: new Date(datos.fechaDevolucion),
       observaciones: datos.observaciones,
+      estado: "APROBADA",
       prendas: {
         create: datos.prendas.map((p) => ({ prendaId: p.prendaId, estadoPrenda: p.estadoPrenda })),
       },
@@ -35,6 +39,12 @@ export async function crearDevolucion(datos: CrearDevolucionInput, usuarioId: st
   });
 
   await prisma.alquiler.update({ where: { id: datos.alquilerId }, data: { estado: "FINALIZADO" } });
+
+  const disfrazIds = [...new Set(alquiler.disfraces.map((ad: any) => ad.disfrazFisicoId))];
+  await prisma.disfrazFisico.updateMany({
+    where: { id: { in: disfrazIds } },
+    data: { estadoManual: "SUSPENDIDO" },
+  });
 
   const sustituciones: { prenda: string; disfrazNecesitado: string }[] = [];
 
@@ -81,8 +91,4 @@ export function listarDevoluciones() {
     },
     orderBy: { creadoEn: "desc" },
   });
-}
-
-export function actualizarEstadoDevolucion(id: string, estado: "APROBADA" | "RECHAZADA" | "CON_OBSERVACIONES") {
-  return prisma.devolucion.update({ where: { id }, data: { estado } });
 }

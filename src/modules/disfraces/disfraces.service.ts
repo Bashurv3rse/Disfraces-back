@@ -31,19 +31,47 @@ interface FiltrosDisfraz {
   tipos?: string[];
 }
 
-function calcularCompleto(disfraz: {
+type EstadoCalculado = "DISPONIBLE" | "INCOMPLETO" | "ALQUILADO" | "EN_REPARACION" | "SUSPENDIDO";
+
+function contarFaltantes(disfraz: {
   prendasHogar: { tipo: string }[];
   prendasActuales: { tipo: string; estado: string }[];
 }) {
   const requeridos: Record<string, number> = {};
-  for (const p of disfraz.prendasHogar) {
-    requeridos[p.tipo] = (requeridos[p.tipo] || 0) + 1;
-  }
+  for (const p of disfraz.prendasHogar) requeridos[p.tipo] = (requeridos[p.tipo] || 0) + 1;
   const disponibles: Record<string, number> = {};
   for (const p of disfraz.prendasActuales) {
     if (p.estado === "DISPONIBLE") disponibles[p.tipo] = (disponibles[p.tipo] || 0) + 1;
   }
-  return Object.entries(requeridos).every(([tipo, cantidad]) => (disponibles[tipo] || 0) >= cantidad);
+  let faltan = 0;
+  for (const [tipo, cantidad] of Object.entries(requeridos)) {
+    faltan += Math.max(0, cantidad - (disponibles[tipo] || 0));
+  }
+  return faltan;
+}
+
+async function calcularEstado(
+  disfraz: {
+    id: string;
+    estadoManual: string | null;
+    prendasHogar: { tipo: string }[];
+    prendasActuales: { tipo: string; estado: string }[];
+  },
+  disfracesAlquiladosAhora: Set<string>
+): Promise<EstadoCalculado> {
+  if (disfraz.estadoManual === "EN_REPARACION") return "EN_REPARACION";
+  if (disfraz.estadoManual === "SUSPENDIDO") return "SUSPENDIDO";
+  if (disfracesAlquiladosAhora.has(disfraz.id)) return "ALQUILADO";
+  if (contarFaltantes(disfraz) > 0) return "INCOMPLETO";
+  return "DISPONIBLE";
+}
+
+async function obtenerAlquiladosAhoraIds(): Promise<Set<string>> {
+  const filas = await prisma.alquilerDisfraz.findMany({
+    where: { alquiler: { estado: { in: ["ACTIVO", "PENDIENTE"] } } },
+    select: { disfrazFisicoId: true },
+  });
+  return new Set(filas.map((f: { disfrazFisicoId: string }) => f.disfrazFisicoId));
 }
 
 export async function listarDisfraces(filtros: FiltrosDisfraz) {
@@ -57,10 +85,16 @@ export async function listarDisfraces(filtros: FiltrosDisfraz) {
     orderBy: { creadoEn: "desc" },
   });
 
-  return disfraces.map((d: any) => ({
-    ...d,
-    completo: calcularCompleto(d),
-  }));
+  const alquiladosAhora = await obtenerAlquiladosAhoraIds();
+
+  return Promise.all(
+    disfraces.map(async (d: any) => ({
+      ...d,
+      estado: await calcularEstado(d, alquiladosAhora),
+      faltantes: contarFaltantes(d),
+      completo: contarFaltantes(d) === 0,
+    }))
+  );
 }
 
 export async function obtenerDisfrazConEstado(id: string) {
@@ -69,21 +103,78 @@ export async function obtenerDisfrazConEstado(id: string) {
     include: { prendasHogar: true, prendasActuales: true },
   });
   if (!d) return null;
-  return { ...d, completo: calcularCompleto(d) };
+  const alquiladosAhora = await obtenerAlquiladosAhoraIds();
+  return {
+    ...d,
+    estado: await calcularEstado(d, alquiladosAhora),
+    faltantes: contarFaltantes(d),
+    completo: contarFaltantes(d) === 0,
+  };
 }
 
 export async function obtenerTemporadasDisponibles() {
-  const filas = await prisma.disfrazFisico.findMany({
-    select: { temporadaEvento: true },
-    distinct: ["temporadaEvento"],
-  });
+  const filas = await prisma.disfrazFisico.findMany({ select: { temporadaEvento: true }, distinct: ["temporadaEvento"] });
   return filas.map((f: { temporadaEvento: string }) => f.temporadaEvento);
 }
 
 export async function obtenerTiposDisponibles() {
-  const filas = await prisma.disfrazFisico.findMany({
-    select: { tipoDisfraz: true },
-    distinct: ["tipoDisfraz"],
-  });
+  const filas = await prisma.disfrazFisico.findMany({ select: { tipoDisfraz: true }, distinct: ["tipoDisfraz"] });
   return filas.map((f: { tipoDisfraz: string }) => f.tipoDisfraz);
+}
+
+export function actualizarEstadoManual(id: string, estado: "EN_REPARACION" | "SUSPENDIDO" | null) {
+  return prisma.disfrazFisico.update({ where: { id }, data: { estadoManual: estado } });
+}
+
+export function actualizarPrenda(id: string, datos: { estado?: "DISPONIBLE" | "DANADA" | "FALTANTE"; calidad?: string }) {
+  return prisma.prenda.update({ where: { id }, data: datos });
+}
+
+export async function buscarCandidatos(prendaId: string) {
+  const prenda = await prisma.prenda.findUnique({ where: { id: prendaId } });
+  if (!prenda) throw new Error("Prenda no encontrada");
+
+  const candidatas = await prisma.prenda.findMany({
+    where: { tipo: prenda.tipo, estado: "DISPONIBLE", id: { not: prendaId } },
+    include: { disfrazHogar: true },
+  });
+  const enCasa = candidatas.filter((p: any) => p.disfrazActualId === p.disfrazHogarId);
+
+  const alquiladosAhora = await obtenerAlquiladosAhoraIds();
+
+  return enCasa
+    .map((p: any) => ({
+      id: p.id,
+      nombre: p.nombre,
+      calidad: p.calidad,
+      color: p.color,
+      talla: p.talla,
+      disfrazOrigenId: p.disfrazHogarId,
+      disfrazOrigenNombre: p.disfrazHogar.nombre,
+      disfrazOrigenAlquilado: alquiladosAhora.has(p.disfrazHogarId),
+    }))
+    .sort((a: any, b: any) => Number(a.disfrazOrigenAlquilado) - Number(b.disfrazOrigenAlquilado));
+}
+
+export async function confirmarPrestamo(prendaNecesitadaId: string, prendaDonanteId: string) {
+  const prendaNecesitada = await prisma.prenda.findUnique({ where: { id: prendaNecesitadaId } });
+  if (!prendaNecesitada) throw new Error("Prenda no encontrada");
+
+  const donante = await prisma.prenda.update({
+    where: { id: prendaDonanteId },
+    data: { disfrazActualId: prendaNecesitada.disfrazHogarId },
+  });
+
+  const disfrazDestino = await prisma.disfrazFisico.findUnique({ where: { id: prendaNecesitada.disfrazHogarId } });
+
+  await prisma.sustitucion.create({
+    data: {
+      prendaId: donante.id,
+      disfrazOrigenId: donante.disfrazHogarId,
+      disfrazDestinoId: prendaNecesitada.disfrazHogarId,
+      motivo: `Préstamo manual: ${donante.nombre} → ${disfrazDestino?.nombre}`,
+    },
+  });
+
+  return donante;
 }

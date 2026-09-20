@@ -1,12 +1,10 @@
 import { Request, Response } from "express";
-import { crearDevolucionSchema, actualizarEstadoSchema } from "./devoluciones.schema";
-import { crearDevolucion, listarDevoluciones, actualizarEstadoDevolucion } from "./devoluciones.service";
+import { crearDevolucionSchema } from "./devoluciones.schema";
+import { crearDevolucion, listarDevoluciones } from "./devoluciones.service";
 
 export async function crear(req: Request, res: Response) {
   const parseo = crearDevolucionSchema.safeParse(req.body);
-  if (!parseo.success) {
-    return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
-  }
+  if (!parseo.success) return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
   try {
     const resultado = await crearDevolucion(parseo.data, req.usuario!.id);
     return res.status(201).json(resultado);
@@ -17,12 +15,4 @@ export async function crear(req: Request, res: Response) {
 
 export async function listar(_req: Request, res: Response) {
   return res.json(await listarDevoluciones());
-}
-
-export async function actualizarEstado(req: Request, res: Response) {
-  const parseo = actualizarEstadoSchema.safeParse(req.body);
-  if (!parseo.success) {
-    return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
-  }
-  return res.json(await actualizarEstadoDevolucion(req.params.id, parseo.data.estado));
 }

@@ -51,12 +51,13 @@ enum EstadoPrenda {
 }
 
 model DisfrazFisico {
-  id              String   @id @default(uuid())
-  nombre          String   // ej. "Marinera #1", "Spiderman #2"
-  tipoDisfraz     String   // categoría libre: "Marinera", "Superhéroe", "Novia"...
+  id              String               @id @default(uuid())
+  nombre          String
+  tipoDisfraz     String
   temporadaEvento String
-  precioAlquiler  Decimal  @db.Decimal(10, 2)
-  creadoEn        DateTime @default(now())
+  precioAlquiler  Decimal              @db.Decimal(10, 2)
+  estadoManual    EstadoManualDisfraz?
+  creadoEn        DateTime             @default(now())
 
   prendasHogar    Prenda[]          @relation("PrendaHogar")
   prendasActuales Prenda[]          @relation("PrendaActual")
@@ -69,6 +70,7 @@ model Prenda {
   tipo            TipoPrenda
   color           String
   talla           String
+  calidad         String       @default("bueno")
   estado          EstadoPrenda @default(DISPONIBLE)
   disfrazHogarId  String
   disfrazActualId String
@@ -77,9 +79,9 @@ model Prenda {
   disfrazHogar  DisfrazFisico @relation("PrendaHogar", fields: [disfrazHogarId], references: [id])
   disfrazActual DisfrazFisico @relation("PrendaActual", fields: [disfrazActualId], references: [id])
 
-  proveedores             PrendaProveedor[]
-  devolucionItems         DevolucionPrenda[]
-  sustitucionesSalida     Sustitucion[]
+  proveedores         PrendaProveedor[]
+  devolucionItems     DevolucionPrenda[]
+  sustitucionesSalida Sustitucion[]
 
   @@index([disfrazHogarId])
   @@index([disfrazActualId])
@@ -128,6 +130,11 @@ enum EstadoOrden {
   EN_CAMINO
   RECIBIDA
   CANCELADA
+}
+
+enum EstadoManualDisfraz {
+  EN_REPARACION
+  SUSPENDIDO
 }
 
 // Reabastecer ya no es "sumar stock a una pieza": es pedir prendas físicas

@@ -14,8 +14,4 @@ export const crearDevolucionSchema = z.object({
   observaciones: z.string().optional(),
 });
 
-export const actualizarEstadoSchema = z.object({
-  estado: z.enum(["APROBADA", "RECHAZADA", "CON_OBSERVACIONES"]),
-});
-
 export type CrearDevolucionInput = z.infer<typeof crearDevolucionSchema>;

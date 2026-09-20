@@ -7,7 +7,7 @@ const NOMBRE_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep
 export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string) {
   const disfraces = await prisma.disfrazFisico.findMany({ where: { id: { in: datos.disfraces } } });
   const montoTotal = disfraces.reduce((s: number, d: { precioAlquiler: unknown }) => s + Number(d.precioAlquiler), 0);
-  const montoGarantia = Math.round(montoTotal * 0.2 * 100) / 100;
+  const montoGarantia = Math.round(montoTotal * 0.25 * 100) / 100;
 
   return prisma.alquiler.create({
     data: {
