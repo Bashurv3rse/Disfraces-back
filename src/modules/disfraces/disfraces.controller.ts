@@ -56,15 +56,23 @@ export async function tipos(_req: Request, res: Response) {
 export async function actualizarEstado(req: Request, res: Response) {
   const parseo = actualizarEstadoManualSchema.safeParse(req.body);
   if (!parseo.success) return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
-  await actualizarEstadoManual(req.params.id, parseo.data.estado);
-  return res.json(await obtenerDisfrazConEstado(req.params.id));
+  try {
+    await actualizarEstadoManual(req.params.id, parseo.data.estado);
+    return res.json(await obtenerDisfrazConEstado(req.params.id));
+  } catch (error: any) {
+    return res.status(409).json({ mensaje: error.message });
+  }
 }
 
 export async function editarPrenda(req: Request, res: Response) {
   const parseo = actualizarPrendaSchema.safeParse(req.body);
   if (!parseo.success) return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
-  const prenda = await actualizarPrenda(req.params.prendaId, parseo.data);
-  return res.json(prenda);
+  try {
+    const prenda = await actualizarPrenda(req.params.prendaId, parseo.data);
+    return res.json(prenda);
+  } catch (error: any) {
+    return res.status(409).json({ mensaje: error.message });
+  }
 }
 
 export async function candidatosPrenda(req: Request, res: Response) {
@@ -82,6 +90,6 @@ export async function prestamoPrenda(req: Request, res: Response) {
     const donante = await confirmarPrestamo(req.params.prendaId, parseo.data.prendaDonanteId);
     return res.status(201).json(donante);
   } catch (error: any) {
-    return res.status(404).json({ mensaje: error.message });
+    return res.status(409).json({ mensaje: error.message });
   }
 }

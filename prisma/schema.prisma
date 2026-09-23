@@ -57,6 +57,7 @@ model DisfrazFisico {
   temporadaEvento String
   precioAlquiler  Decimal              @db.Decimal(10, 2)
   estadoManual    EstadoManualDisfraz?
+  fechaSuspension DateTime?
   creadoEn        DateTime             @default(now())
 
   prendasHogar    Prenda[]          @relation("PrendaHogar")

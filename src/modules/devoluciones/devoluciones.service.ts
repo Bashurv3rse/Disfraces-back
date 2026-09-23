@@ -40,10 +40,13 @@ export async function crearDevolucion(datos: CrearDevolucionInput, usuarioId: st
 
   await prisma.alquiler.update({ where: { id: datos.alquilerId }, data: { estado: "FINALIZADO" } });
 
+  // Todo disfraz devuelto entra en "suspensión" (lavado → planchado → empaquetado,
+  // 3 días hábiles) sin importar el estado en que haya vuelto. Se libera solo,
+  // sincronizado con el reloj real — no hace falta que el admin lo confirme.
   const disfrazIds = [...new Set(alquiler.disfraces.map((ad: any) => ad.disfrazFisicoId))];
   await prisma.disfrazFisico.updateMany({
     where: { id: { in: disfrazIds } },
-    data: { estadoManual: "SUSPENDIDO" },
+    data: { estadoManual: "SUSPENDIDO", fechaSuspension: new Date() },
   });
 
   const sustituciones: { prenda: string; disfrazNecesitado: string }[] = [];

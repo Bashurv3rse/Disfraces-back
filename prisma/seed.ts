@@ -2,200 +2,202 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-interface PrendaSeed {
+interface PrendaBase {
   nombre: string;
   tipo: string;
   color: string;
-  talla: string;
 }
 
-interface DisfrazSeed {
+interface FamiliaDisfraz {
   nombre: string;
   tipoDisfraz: string;
   temporadaEvento: string;
   precioAlquiler: number;
-  prendas: PrendaSeed[];
+  prendas: PrendaBase[];
 }
 
-const disfraces: DisfrazSeed[] = [
+const TALLAS_ROPA = ["S", "M", "L"];
+const TALLAS_CALZADO = [37, 39, 41];
+
+function tallaPara(tipo: string, indice: number): string {
+  if (tipo === "ZAPATO" || tipo === "TACON") return String(TALLAS_CALZADO[indice]);
+  if (tipo === "PANUELO" || tipo === "ACCESORIO") return "única";
+  return TALLAS_ROPA[indice];
+}
+
+const familias: FamiliaDisfraz[] = [
   {
-    nombre: "Marinera #1",
+    nombre: "Marinera Peruana",
     tipoDisfraz: "Marinera",
     temporadaEvento: "criollo",
     precioAlquiler: 45.0,
     prendas: [
-      { nombre: "Pañuelo de marinera", tipo: "PANUELO", color: "blanco", talla: "única" },
-      { nombre: "Falda de marinera", tipo: "FALDA", color: "rojo", talla: "M" },
-      { nombre: "Blusa de marinera", tipo: "CAMISA", color: "blanco", talla: "M" },
-      { nombre: "Zapatillas de baile", tipo: "ZAPATO", color: "blanco", talla: "37" },
+      { nombre: "Pañuelo de marinera", tipo: "PANUELO", color: "blanco" },
+      { nombre: "Falda de marinera", tipo: "FALDA", color: "rojo" },
+      { nombre: "Blusa de marinera", tipo: "CAMISA", color: "blanco" },
+      { nombre: "Zapatillas de baile", tipo: "ZAPATO", color: "blanco" },
     ],
   },
   {
-    nombre: "Marinera #2",
-    tipoDisfraz: "Marinera",
-    temporadaEvento: "criollo",
-    precioAlquiler: 45.0,
-    prendas: [
-      { nombre: "Pañuelo de marinera", tipo: "PANUELO", color: "blanco", talla: "única" },
-      { nombre: "Falda de marinera", tipo: "FALDA", color: "azul", talla: "S" },
-      { nombre: "Blusa de marinera", tipo: "CAMISA", color: "blanco", talla: "S" },
-      { nombre: "Zapatillas de baile", tipo: "ZAPATO", color: "blanco", talla: "36" },
-    ],
-  },
-  {
-    nombre: "Spiderman #1",
+    nombre: "Spider-Man",
     tipoDisfraz: "Superhéroe",
     temporadaEvento: "halloween",
     precioAlquiler: 38.0,
     prendas: [
-      { nombre: "Traje de Spiderman", tipo: "CAMISA", color: "rojo", talla: "M" },
-      { nombre: "Pantalón de Spiderman", tipo: "PANTALON", color: "azul", talla: "M" },
-      { nombre: "Botas de superhéroe", tipo: "ZAPATO", color: "rojo", talla: "38" },
-      { nombre: "Máscara de Spiderman", tipo: "ACCESORIO", color: "rojo", talla: "única" },
+      { nombre: "Traje de Spiderman", tipo: "CAMISA", color: "rojo" },
+      { nombre: "Pantalón de Spiderman", tipo: "PANTALON", color: "azul" },
+      { nombre: "Botas de superhéroe", tipo: "ZAPATO", color: "rojo" },
+      { nombre: "Máscara de Spiderman", tipo: "ACCESORIO", color: "rojo" },
     ],
   },
   {
-    nombre: "Batman #1",
+    nombre: "Batman",
     tipoDisfraz: "Superhéroe",
     temporadaEvento: "halloween",
     precioAlquiler: 42.0,
     prendas: [
-      { nombre: "Traje de Batman", tipo: "CAMISA", color: "negro", talla: "L" },
-      { nombre: "Pantalón de Batman", tipo: "PANTALON", color: "negro", talla: "L" },
-      { nombre: "Botas de superhéroe", tipo: "ZAPATO", color: "negro", talla: "40" },
-      { nombre: "Capa de Batman", tipo: "ABRIGO", color: "negro", talla: "L" },
-      { nombre: "Máscara de Batman", tipo: "ACCESORIO", color: "negro", talla: "única" },
+      { nombre: "Traje de Batman", tipo: "CAMISA", color: "negro" },
+      { nombre: "Pantalón de Batman", tipo: "PANTALON", color: "negro" },
+      { nombre: "Botas de superhéroe", tipo: "ZAPATO", color: "negro" },
+      { nombre: "Capa de Batman", tipo: "ABRIGO", color: "negro" },
     ],
   },
   {
-    nombre: "Chucky #1",
+    nombre: "Superman",
+    tipoDisfraz: "Superhéroe",
+    temporadaEvento: "halloween",
+    precioAlquiler: 40.0,
+    prendas: [
+      { nombre: "Traje de Superman", tipo: "CAMISA", color: "azul" },
+      { nombre: "Capa de Superman", tipo: "ABRIGO", color: "rojo" },
+      { nombre: "Botas de superhéroe", tipo: "ZAPATO", color: "rojo" },
+    ],
+  },
+  {
+    nombre: "Chucky",
     tipoDisfraz: "Terror",
     temporadaEvento: "halloween",
     precioAlquiler: 35.0,
     prendas: [
-      { nombre: "Overol de Chucky", tipo: "CAMISA", color: "multicolor", talla: "S" },
-      { nombre: "Pantalón de Chucky", tipo: "PANTALON", color: "azul", talla: "S" },
-      { nombre: "Zapatos de muñeco", tipo: "ZAPATO", color: "negro", talla: "36" },
-      { nombre: "Máscara de Chucky", tipo: "ACCESORIO", color: "multicolor", talla: "única" },
+      { nombre: "Overol de Chucky", tipo: "CAMISA", color: "multicolor" },
+      { nombre: "Pantalón de Chucky", tipo: "PANTALON", color: "azul" },
+      { nombre: "Zapatos de muñeco", tipo: "ZAPATO", color: "negro" },
     ],
   },
   {
-    nombre: "Novia clásica #1",
-    tipoDisfraz: "Novia",
+    nombre: "Novio de Boda",
+    tipoDisfraz: "Novio de Boda",
     temporadaEvento: "boda",
-    precioAlquiler: 60.0,
+    precioAlquiler: 55.0,
     prendas: [
-      { nombre: "Vestido de novia", tipo: "ABRIGO", color: "blanco", talla: "M" },
-      { nombre: "Velo de novia", tipo: "ACCESORIO", color: "blanco", talla: "única" },
-      { nombre: "Tacones de novia", tipo: "TACON", color: "blanco", talla: "37" },
+      { nombre: "Saco de novio", tipo: "ABRIGO", color: "negro" },
+      { nombre: "Camisa formal blanca", tipo: "CAMISA", color: "blanco" },
+      { nombre: "Pantalón de vestir", tipo: "PANTALON", color: "negro" },
+      { nombre: "Zapatos de taco negro", tipo: "ZAPATO", color: "negro" },
     ],
   },
   {
-    nombre: "Traje de baño tropical #1",
+    nombre: "Traje de baño tropical",
     tipoDisfraz: "Playa",
     temporadaEvento: "verano",
     precioAlquiler: 20.0,
     prendas: [
-      { nombre: "Camisa hawaiana", tipo: "CAMISA", color: "multicolor", talla: "M" },
-      { nombre: "Short de baño", tipo: "PANTALON", color: "azul", talla: "M" },
-      { nombre: "Sandalias de playa", tipo: "ZAPATO", color: "marrón", talla: "39" },
+      { nombre: "Camisa hawaiana", tipo: "CAMISA", color: "multicolor" },
+      { nombre: "Short de baño", tipo: "PANTALON", color: "azul" },
+      { nombre: "Sandalias de playa", tipo: "ZAPATO", color: "marrón" },
     ],
   },
   {
-    nombre: "Futbolista #1",
+    nombre: "Futbolista",
     tipoDisfraz: "Fútbol",
     temporadaEvento: "deportivo",
     precioAlquiler: 25.0,
     prendas: [
-      { nombre: "Camiseta de fútbol", tipo: "CAMISA", color: "rojo", talla: "M" },
-      { nombre: "Short deportivo", tipo: "PANTALON", color: "blanco", talla: "M" },
-      { nombre: "Chimpunes", tipo: "ZAPATO", color: "negro", talla: "40" },
+      { nombre: "Camiseta de fútbol", tipo: "CAMISA", color: "rojo" },
+      { nombre: "Short deportivo", tipo: "PANTALON", color: "blanco" },
+      { nombre: "Chimpunes", tipo: "ZAPATO", color: "negro" },
     ],
   },
   {
-    nombre: "Bruja clásica #1",
+    nombre: "Bruja Clásica",
     tipoDisfraz: "Bruja",
     temporadaEvento: "halloween",
     precioAlquiler: 30.0,
     prendas: [
-      { nombre: "Sombrero de bruja", tipo: "SOMBRERO", color: "negro", talla: "única" },
-      { nombre: "Capa de bruja", tipo: "ABRIGO", color: "negro", talla: "M" },
-      { nombre: "Botas de bruja", tipo: "ZAPATO", color: "negro", talla: "37" },
-      { nombre: "Escoba decorativa", tipo: "ACCESORIO", color: "marrón", talla: "única" },
+      { nombre: "Sombrero de bruja", tipo: "SOMBRERO", color: "negro" },
+      { nombre: "Capa de bruja", tipo: "ABRIGO", color: "negro" },
+      { nombre: "Botas de bruja", tipo: "ZAPATO", color: "negro" },
     ],
   },
   {
-    nombre: "Papá Noel #1",
+    nombre: "Papá Noel",
     tipoDisfraz: "Navidad",
     temporadaEvento: "navidad",
     precioAlquiler: 32.0,
     prendas: [
-      { nombre: "Gorro de Santa", tipo: "SOMBRERO", color: "rojo", talla: "única" },
-      { nombre: "Abrigo de Santa", tipo: "ABRIGO", color: "rojo", talla: "L" },
-      { nombre: "Pantalón de Santa", tipo: "PANTALON", color: "rojo", talla: "L" },
-      { nombre: "Botas de Santa", tipo: "ZAPATO", color: "negro", talla: "41" },
+      { nombre: "Gorro de Santa", tipo: "SOMBRERO", color: "rojo" },
+      { nombre: "Abrigo de Santa", tipo: "ABRIGO", color: "rojo" },
+      { nombre: "Pantalón de Santa", tipo: "PANTALON", color: "rojo" },
+      { nombre: "Botas de Santa", tipo: "ZAPATO", color: "negro" },
     ],
   },
   {
-    nombre: "Torero #1",
+    nombre: "Torero",
     tipoDisfraz: "Torero",
     temporadaEvento: "carnaval",
     precioAlquiler: 34.0,
     prendas: [
-      { nombre: "Sombrero de torero", tipo: "SOMBRERO", color: "negro", talla: "única" },
-      { nombre: "Chaleco de torero", tipo: "CHALECO", color: "rojo", talla: "M" },
-      { nombre: "Pantalón de torero", tipo: "PANTALON", color: "negro", talla: "M" },
-      { nombre: "Zapatos de torero", tipo: "ZAPATO", color: "negro", talla: "38" },
+      { nombre: "Sombrero de torero", tipo: "SOMBRERO", color: "negro" },
+      { nombre: "Chaleco de torero", tipo: "CHALECO", color: "rojo" },
+      { nombre: "Pantalón de torero", tipo: "PANTALON", color: "negro" },
+      { nombre: "Zapatos de torero", tipo: "ZAPATO", color: "negro" },
     ],
   },
   {
-    nombre: "Reina de gala #1",
+    nombre: "Reina de Gala",
     tipoDisfraz: "Realeza",
     temporadaEvento: "gala",
     precioAlquiler: 55.0,
     prendas: [
-      { nombre: "Corona de reina", tipo: "SOMBRERO", color: "dorado", talla: "única" },
-      { nombre: "Manto de reina", tipo: "ABRIGO", color: "rojo", talla: "M" },
-      { nombre: "Tacones de gala", tipo: "TACON", color: "dorado", talla: "37" },
-      { nombre: "Collar de reina", tipo: "ACCESORIO", color: "dorado", talla: "única" },
+      { nombre: "Corona de reina", tipo: "SOMBRERO", color: "dorado" },
+      { nombre: "Manto de reina", tipo: "ABRIGO", color: "rojo" },
+      { nombre: "Tacones de gala", tipo: "TACON", color: "dorado" },
     ],
   },
   {
-    nombre: "Pirata del Caribe #1",
+    nombre: "Pirata del Caribe",
     tipoDisfraz: "Pirata",
     temporadaEvento: "halloween",
     precioAlquiler: 36.0,
     prendas: [
-      { nombre: "Sombrero de pirata", tipo: "SOMBRERO", color: "negro", talla: "única" },
-      { nombre: "Camisa de pirata", tipo: "CAMISA", color: "blanco", talla: "M" },
-      { nombre: "Pantalón de pirata", tipo: "PANTALON", color: "marrón", talla: "M" },
-      { nombre: "Botas de pirata", tipo: "ZAPATO", color: "marrón", talla: "39" },
-      { nombre: "Parche de pirata", tipo: "ACCESORIO", color: "negro", talla: "única" },
+      { nombre: "Sombrero de pirata", tipo: "SOMBRERO", color: "negro" },
+      { nombre: "Camisa de pirata", tipo: "CAMISA", color: "blanco" },
+      { nombre: "Pantalón de pirata", tipo: "PANTALON", color: "marrón" },
+      { nombre: "Botas de pirata", tipo: "ZAPATO", color: "marrón" },
     ],
   },
   {
-    nombre: "Vaquero del oeste #1",
+    nombre: "Vaquero del Oeste",
     tipoDisfraz: "Vaquero",
     temporadaEvento: "carnaval",
     precioAlquiler: 33.0,
     prendas: [
-      { nombre: "Sombrero de vaquero", tipo: "SOMBRERO", color: "marrón", talla: "única" },
-      { nombre: "Chaleco de vaquero", tipo: "CHALECO", color: "marrón", talla: "M" },
-      { nombre: "Pantalón de vaquero", tipo: "PANTALON", color: "azul", talla: "M" },
-      { nombre: "Botas de vaquero", tipo: "ZAPATO", color: "marrón", talla: "40" },
+      { nombre: "Sombrero de vaquero", tipo: "SOMBRERO", color: "marrón" },
+      { nombre: "Chaleco de vaquero", tipo: "CHALECO", color: "marrón" },
+      { nombre: "Pantalón de vaquero", tipo: "PANTALON", color: "azul" },
+      { nombre: "Botas de vaquero", tipo: "ZAPATO", color: "marrón" },
     ],
   },
   {
-    nombre: "Gala elegante #1",
+    nombre: "Gala Elegante",
     tipoDisfraz: "Gala",
     temporadaEvento: "gala",
     precioAlquiler: 50.0,
     prendas: [
-      { nombre: "Camisa de gala", tipo: "CAMISA", color: "blanco", talla: "M" },
-      { nombre: "Pantalón de vestir", tipo: "PANTALON", color: "negro", talla: "M" },
-      { nombre: "Chaleco de gala", tipo: "CHALECO", color: "negro", talla: "M" },
-      { nombre: "Zapatos de gala", tipo: "ZAPATO", color: "negro", talla: "39" },
-      { nombre: "Corbata de gala", tipo: "ACCESORIO", color: "negro", talla: "única" },
+      { nombre: "Camisa de gala", tipo: "CAMISA", color: "blanco" },
+      { nombre: "Pantalón de vestir", tipo: "PANTALON", color: "negro" },
+      { nombre: "Chaleco de gala", tipo: "CHALECO", color: "negro" },
+      { nombre: "Zapatos de gala", tipo: "ZAPATO", color: "negro" },
     ],
   },
 ];
@@ -212,32 +214,55 @@ async function main() {
   await prisma.prenda.deleteMany();
   await prisma.disfrazFisico.deleteMany();
 
-  console.log("Creando disfraces físicos y sus prendas…");
+  console.log("Creando 3 instancias por cada familia de disfraz…");
+  let totalDisfraces = 0;
   let totalPrendas = 0;
-  for (const d of disfraces) {
-    const disfraz = await prisma.disfrazFisico.create({
-      data: {
-        nombre: d.nombre,
-        tipoDisfraz: d.tipoDisfraz,
-        temporadaEvento: d.temporadaEvento,
-        precioAlquiler: d.precioAlquiler,
-      },
-    });
+  const idsCreados: { nombre: string; id: string }[] = [];
 
-    await prisma.prenda.createMany({
-      data: d.prendas.map((p) => ({
-        nombre: p.nombre,
-        tipo: p.tipo as any,
-        color: p.color,
-        talla: p.talla,
-        disfrazHogarId: disfraz.id,
-        disfrazActualId: disfraz.id,
-      })),
-    });
-    totalPrendas += d.prendas.length;
+  for (const familia of familias) {
+    for (let i = 0; i < 3; i++) {
+      const nombreInstancia = `${familia.nombre} #${i + 1}`;
+      const disfraz = await prisma.disfrazFisico.create({
+        data: {
+          nombre: nombreInstancia,
+          tipoDisfraz: familia.tipoDisfraz,
+          temporadaEvento: familia.temporadaEvento,
+          precioAlquiler: familia.precioAlquiler,
+        },
+      });
+      idsCreados.push({ nombre: nombreInstancia, id: disfraz.id });
+
+      await prisma.prenda.createMany({
+        data: familia.prendas.map((p) => ({
+          nombre: p.nombre,
+          tipo: p.tipo as any,
+          color: p.color,
+          talla: tallaPara(p.tipo, i),
+          disfrazHogarId: disfraz.id,
+          disfrazActualId: disfraz.id,
+        })),
+      });
+
+      totalDisfraces++;
+      totalPrendas += familia.prendas.length;
+    }
   }
 
-  console.log(`Listo: ${disfraces.length} disfraces físicos y ${totalPrendas} prendas creadas.`);
+  // --- Datos de ejemplo para ver los distintos estados desde el primer momento ---
+  console.log("Marcando algunos ejemplos de estados (incompleto / en reparación)…");
+
+  const marinera1 = idsCreados.find((d) => d.nombre === "Marinera Peruana #1")!;
+  const panueloMarinera1 = await prisma.prenda.findFirst({
+    where: { disfrazHogarId: marinera1.id, tipo: "PANUELO" },
+  });
+  if (panueloMarinera1) {
+    await prisma.prenda.update({ where: { id: panueloMarinera1.id }, data: { estado: "FALTANTE" } });
+  }
+
+  const superman1 = idsCreados.find((d) => d.nombre === "Superman #1")!;
+  await prisma.disfrazFisico.update({ where: { id: superman1.id }, data: { estadoManual: "EN_REPARACION" } });
+
+  console.log(`Listo: ${totalDisfraces} disfraces físicos y ${totalPrendas} prendas creadas.`);
 }
 
 main()
