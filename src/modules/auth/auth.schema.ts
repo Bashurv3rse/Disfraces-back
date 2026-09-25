@@ -4,6 +4,8 @@ export const registroSchema = z.object({
   nombre: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  telefono: z.string().min(6, "Ingresa un teléfono válido"),
+  direccion: z.string().min(5, "Ingresa una dirección válida"),
 });
 
 export const loginSchema = z.object({
@@ -13,8 +15,3 @@ export const loginSchema = z.object({
 
 export type RegistroInput = z.infer<typeof registroSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
-export const actualizarRolSchema = z.object({
-  rol: z.enum(["CLIENTE", "ADMINISTRADOR", "PROVEEDOR"]),
-});
-
-export type ActualizarRolInput = z.infer<typeof actualizarRolSchema>;

@@ -17,12 +17,14 @@ enum Rol {
 }
 
 model Usuario {
-  id       String   @id @default(uuid())
-  nombre   String
-  email    String   @unique
-  password String
-  rol      Rol      @default(CLIENTE)
-  creadoEn DateTime @default(now())
+  id        String   @id @default(uuid())
+  nombre    String
+  email     String   @unique
+  password  String
+  telefono  String
+  direccion String
+  rol       Rol      @default(CLIENTE)
+  creadoEn  DateTime @default(now())
 
   alquileres     Alquiler[]
   notificaciones Notificacion[]

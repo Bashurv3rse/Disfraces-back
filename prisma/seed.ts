@@ -26,6 +26,10 @@ function tallaPara(tipo: string, indice: number): string {
 }
 
 const familias: FamiliaDisfraz[] = [
+  // ============================================
+  // Clúster "Criollo": Marinera <-> Chalán Costeño
+  // comparten PANUELO y ZAPATO
+  // ============================================
   {
     nombre: "Marinera Peruana",
     tipoDisfraz: "Marinera",
@@ -38,6 +42,23 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Zapatillas de baile", tipo: "ZAPATO", color: "blanco" },
     ],
   },
+  {
+    nombre: "Chalán Costeño",
+    tipoDisfraz: "Chalán",
+    temporadaEvento: "criollo",
+    precioAlquiler: 40.0,
+    prendas: [
+      { nombre: "Pañuelo de chalán", tipo: "PANUELO", color: "rojo" },
+      { nombre: "Camisa de chalán", tipo: "CAMISA", color: "blanco" },
+      { nombre: "Pantalón de chalán", tipo: "PANTALON", color: "negro" },
+      { nombre: "Zapatos de vestir", tipo: "ZAPATO", color: "negro" },
+    ],
+  },
+
+  // ============================================
+  // Superhéroes: aislados, sin cruce deliberado
+  // (Batman/Superman comparten ABRIGO de forma incidental)
+  // ============================================
   {
     nombre: "Spider-Man",
     tipoDisfraz: "Superhéroe",
@@ -84,6 +105,51 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Zapatos de muñeco", tipo: "ZAPATO", color: "negro" },
     ],
   },
+
+  // ============================================
+  // Clúster "Halloween capa y sombrero":
+  // Bruja <-> Mago <-> Vampiro, comparten SOMBRERO y ABRIGO
+  // ============================================
+  {
+    nombre: "Bruja Clásica",
+    tipoDisfraz: "Bruja",
+    temporadaEvento: "halloween",
+    precioAlquiler: 30.0,
+    prendas: [
+      { nombre: "Sombrero de bruja", tipo: "SOMBRERO", color: "negro" },
+      { nombre: "Capa de bruja", tipo: "ABRIGO", color: "negro" },
+      { nombre: "Botas de bruja", tipo: "ZAPATO", color: "negro" },
+    ],
+  },
+  {
+    nombre: "Mago Misterioso",
+    tipoDisfraz: "Mago",
+    temporadaEvento: "halloween",
+    precioAlquiler: 34.0,
+    prendas: [
+      { nombre: "Sombrero de mago", tipo: "SOMBRERO", color: "negro" },
+      { nombre: "Capa de mago", tipo: "ABRIGO", color: "morado" },
+      { nombre: "Traje de mago", tipo: "CAMISA", color: "negro" },
+      { nombre: "Botas de mago", tipo: "ZAPATO", color: "negro" },
+    ],
+  },
+  {
+    nombre: "Conde Vampiro",
+    tipoDisfraz: "Vampiro",
+    temporadaEvento: "halloween",
+    precioAlquiler: 36.0,
+    prendas: [
+      { nombre: "Capa de vampiro", tipo: "ABRIGO", color: "negro" },
+      { nombre: "Camisa de vampiro", tipo: "CAMISA", color: "blanco" },
+      { nombre: "Pantalón de vampiro", tipo: "PANTALON", color: "negro" },
+      { nombre: "Zapatos de vampiro", tipo: "ZAPATO", color: "negro" },
+    ],
+  },
+
+  // ============================================
+  // Clúster "Boda/Gala formal": Novio <-> Gala Elegante <-> Padrino
+  // comparten CAMISA, PANTALON, ZAPATO, CHALECO
+  // ============================================
   {
     nombre: "Novio de Boda",
     tipoDisfraz: "Novio de Boda",
@@ -96,6 +162,35 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Zapatos de taco negro", tipo: "ZAPATO", color: "negro" },
     ],
   },
+  {
+    nombre: "Gala Elegante",
+    tipoDisfraz: "Gala",
+    temporadaEvento: "gala",
+    precioAlquiler: 50.0,
+    prendas: [
+      { nombre: "Camisa de gala", tipo: "CAMISA", color: "blanco" },
+      { nombre: "Pantalón de vestir", tipo: "PANTALON", color: "negro" },
+      { nombre: "Chaleco de gala", tipo: "CHALECO", color: "negro" },
+      { nombre: "Zapatos de gala", tipo: "ZAPATO", color: "negro" },
+    ],
+  },
+  {
+    nombre: "Padrino de Boda",
+    tipoDisfraz: "Padrino",
+    temporadaEvento: "boda",
+    precioAlquiler: 48.0,
+    prendas: [
+      { nombre: "Chaleco de padrino", tipo: "CHALECO", color: "gris" },
+      { nombre: "Camisa formal", tipo: "CAMISA", color: "blanco" },
+      { nombre: "Pantalón de vestir", tipo: "PANTALON", color: "negro" },
+      { nombre: "Zapatos de vestir", tipo: "ZAPATO", color: "negro" },
+    ],
+  },
+
+  // ============================================
+  // Clúster "Playa/Deportivo": Futbolista <-> Traje de Baño <-> Surfista
+  // comparten CAMISA, PANTALON, ZAPATO
+  // ============================================
   {
     nombre: "Traje de baño tropical",
     tipoDisfraz: "Playa",
@@ -119,16 +214,20 @@ const familias: FamiliaDisfraz[] = [
     ],
   },
   {
-    nombre: "Bruja Clásica",
-    tipoDisfraz: "Bruja",
-    temporadaEvento: "halloween",
-    precioAlquiler: 30.0,
+    nombre: "Surfista Playero",
+    tipoDisfraz: "Playa",
+    temporadaEvento: "verano",
+    precioAlquiler: 22.0,
     prendas: [
-      { nombre: "Sombrero de bruja", tipo: "SOMBRERO", color: "negro" },
-      { nombre: "Capa de bruja", tipo: "ABRIGO", color: "negro" },
-      { nombre: "Botas de bruja", tipo: "ZAPATO", color: "negro" },
+      { nombre: "Polo deportivo", tipo: "CAMISA", color: "azul" },
+      { nombre: "Bermuda de playa", tipo: "PANTALON", color: "multicolor" },
+      { nombre: "Sandalias deportivas", tipo: "ZAPATO", color: "negro" },
     ],
   },
+
+  // ============================================
+  // Navidad: aislado por ahora (única familia navideña)
+  // ============================================
   {
     nombre: "Papá Noel",
     tipoDisfraz: "Navidad",
@@ -141,6 +240,11 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Botas de Santa", tipo: "ZAPATO", color: "negro" },
     ],
   },
+
+  // ============================================
+  // Clúster "Vaquero/Torero/Pirata" (ya existía)
+  // comparten SOMBRERO y ZAPATO
+  // ============================================
   {
     nombre: "Torero",
     tipoDisfraz: "Torero",
@@ -151,17 +255,6 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Chaleco de torero", tipo: "CHALECO", color: "rojo" },
       { nombre: "Pantalón de torero", tipo: "PANTALON", color: "negro" },
       { nombre: "Zapatos de torero", tipo: "ZAPATO", color: "negro" },
-    ],
-  },
-  {
-    nombre: "Reina de Gala",
-    tipoDisfraz: "Realeza",
-    temporadaEvento: "gala",
-    precioAlquiler: 55.0,
-    prendas: [
-      { nombre: "Corona de reina", tipo: "SOMBRERO", color: "dorado" },
-      { nombre: "Manto de reina", tipo: "ABRIGO", color: "rojo" },
-      { nombre: "Tacones de gala", tipo: "TACON", color: "dorado" },
     ],
   },
   {
@@ -188,15 +281,30 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Botas de vaquero", tipo: "ZAPATO", color: "marrón" },
     ],
   },
+
+  // ============================================
+  // Clúster "Realeza/Gala": Reina <-> Rey
+  // comparten SOMBRERO (corona) y ABRIGO (manto)
+  // ============================================
   {
-    nombre: "Gala Elegante",
-    tipoDisfraz: "Gala",
+    nombre: "Reina de Gala",
+    tipoDisfraz: "Realeza",
     temporadaEvento: "gala",
-    precioAlquiler: 50.0,
+    precioAlquiler: 55.0,
     prendas: [
-      { nombre: "Camisa de gala", tipo: "CAMISA", color: "blanco" },
-      { nombre: "Pantalón de vestir", tipo: "PANTALON", color: "negro" },
-      { nombre: "Chaleco de gala", tipo: "CHALECO", color: "negro" },
+      { nombre: "Corona de reina", tipo: "SOMBRERO", color: "dorado" },
+      { nombre: "Manto de reina", tipo: "ABRIGO", color: "rojo" },
+      { nombre: "Tacones de gala", tipo: "TACON", color: "dorado" },
+    ],
+  },
+  {
+    nombre: "Rey de Gala",
+    tipoDisfraz: "Realeza",
+    temporadaEvento: "gala",
+    precioAlquiler: 55.0,
+    prendas: [
+      { nombre: "Corona de rey", tipo: "SOMBRERO", color: "dorado" },
+      { nombre: "Manto de rey", tipo: "ABRIGO", color: "azul" },
       { nombre: "Zapatos de gala", tipo: "ZAPATO", color: "negro" },
     ],
   },
@@ -214,7 +322,7 @@ async function main() {
   await prisma.prenda.deleteMany();
   await prisma.disfrazFisico.deleteMany();
 
-  console.log("Creando 3 instancias por cada familia de disfraz…");
+  console.log("Creando 3 instancias por cada familia…");
   let totalDisfraces = 0;
   let totalPrendas = 0;
   const idsCreados: { nombre: string; id: string }[] = [];
