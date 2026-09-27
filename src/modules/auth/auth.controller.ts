@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { registroSchema, loginSchema } from "./auth.schema";
 import { registrarUsuario, iniciarSesion } from "./auth.service";
+import { registrarEventoSeguridad } from "../../common/logger";
 
 export async function registro(req: Request, res: Response) {
   const parseo = registroSchema.safeParse(req.body);
@@ -10,8 +11,15 @@ export async function registro(req: Request, res: Response) {
 
   try {
     const resultado = await registrarUsuario(parseo.data);
+    registrarEventoSeguridad({
+      evento: "REGISTRO_EXITOSO",
+      usuarioId: resultado.usuario.id,
+      email: resultado.usuario.email,
+      ip: req.ip,
+    });
     return res.status(201).json(resultado);
   } catch (error: any) {
+    registrarEventoSeguridad({ evento: "REGISTRO_FALLIDO", email: parseo.data.email, ip: req.ip, detalle: error.message });
     return res.status(400).json({ mensaje: error.message });
   }
 }
@@ -24,11 +32,19 @@ export async function login(req: Request, res: Response) {
 
   try {
     const resultado = await iniciarSesion(parseo.data);
+    registrarEventoSeguridad({
+      evento: "LOGIN_EXITOSO",
+      usuarioId: resultado.usuario.id,
+      email: resultado.usuario.email,
+      ip: req.ip,
+    });
     return res.status(200).json(resultado);
   } catch (error: any) {
+    registrarEventoSeguridad({ evento: "LOGIN_FALLIDO", email: parseo.data.email, ip: req.ip });
     return res.status(401).json({ mensaje: error.message });
   }
 }
+
 import { actualizarRolSchema } from "./auth.schema";
 import { listarUsuarios, actualizarRolUsuario } from "./auth.service";
 
@@ -48,5 +64,20 @@ export async function actualizarRolController(req: Request, res: Response) {
     return res.json(usuario);
   } catch (error: any) {
     return res.status(404).json({ mensaje: error.message });
+  }
+}
+
+import { refrescarAccessToken } from "./auth.service";
+
+export async function refrescar(req: Request, res: Response) {
+  const { refreshToken } = req.body;
+  if (!refreshToken || typeof refreshToken !== "string") {
+    return res.status(400).json({ mensaje: "Falta el refresh token" });
+  }
+  try {
+    const resultado = await refrescarAccessToken(refreshToken);
+    return res.json(resultado);
+  } catch (error: any) {
+    return res.status(401).json({ mensaje: error.message });
   }
 }
