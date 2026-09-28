@@ -4,7 +4,7 @@ import { CrearAlquilerInput } from "./alquileres.schema";
 const NOMBRE_DIA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const NOMBRE_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string) {
+export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string, stripeSessionId?: string) {
   const disfraces = await prisma.disfrazFisico.findMany({ where: { id: { in: datos.disfraces } } });
   const montoTotal = disfraces.reduce((s: number, d: { precioAlquiler: unknown }) => s + Number(d.precioAlquiler), 0);
   const montoGarantia = Math.round(montoTotal * 0.25 * 100) / 100;
@@ -18,6 +18,7 @@ export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string
       estado: "ACTIVO",
       montoTotal,
       montoGarantia,
+      stripeSessionId,
       disfraces: {
         create: disfraces.map((d: { id: string; precioAlquiler: unknown }) => ({
           disfrazFisicoId: d.id,

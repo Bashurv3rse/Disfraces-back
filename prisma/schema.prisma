@@ -165,15 +165,16 @@ enum EstadoAlquiler {
 }
 
 model Alquiler {
-  id            String         @id @default(uuid())
-  usuarioId     String
-  fechaInicio   DateTime
-  fechaFin      DateTime
-  evento        String?
-  estado        EstadoAlquiler @default(ACTIVO)
-  montoTotal    Decimal        @db.Decimal(10, 2)
-  montoGarantia Decimal        @default(0) @db.Decimal(10, 2)
-  creadoEn      DateTime       @default(now())
+  id              String         @id @default(uuid())
+  usuarioId       String
+  fechaInicio     DateTime
+  fechaFin        DateTime
+  evento          String?
+  estado          EstadoAlquiler @default(ACTIVO)
+  montoTotal      Decimal        @db.Decimal(10, 2)
+  montoGarantia   Decimal        @default(0) @db.Decimal(10, 2)
+  stripeSessionId String?        @unique
+  creadoEn        DateTime       @default(now())
 
   usuario    Usuario           @relation(fields: [usuarioId], references: [id])
   disfraces  AlquilerDisfraz[]

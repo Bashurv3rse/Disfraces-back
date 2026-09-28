@@ -43,6 +43,7 @@ import { proveedoresRouter } from "./modules/proveedores/proveedores.routes";
 import { alquileresRouter } from "./modules/alquileres/alquileres.routes";
 import { devolucionesRouter } from "./modules/devoluciones/devoluciones.routes";
 import { disfracesRouter } from "./modules/disfraces/disfraces.routes";
+import { pagosRouter } from "./modules/pagos/pagos.routes";
 
 app.use("/api/auth/login", limitadorLogin);
 app.use("/api/auth/registro", limitadorRegistro);
@@ -50,8 +51,9 @@ app.use("/api/auth/registro", limitadorRegistro);
 app.use("/api/auth", authRouter);
 app.use("/api/proveedores", proveedoresRouter);
 app.use("/api/alquileres", alquileresRouter);
-app.use("/api/disfraces", disfracesRouter);
 app.use("/api/devoluciones", devolucionesRouter);
+app.use("/api/disfraces", disfracesRouter);
+app.use("/api/pagos", pagosRouter);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
