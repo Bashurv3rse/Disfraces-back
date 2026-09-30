@@ -12,6 +12,7 @@ export const crearDisfrazSchema = z.object({
   tipoDisfraz: z.string().min(2),
   temporadaEvento: z.string().min(1),
   precioAlquiler: z.number().positive(),
+  imagenUrl: z.string().url().optional(),
   prendas: z.array(prendaSchema).min(1, "Debe incluir al menos una prenda"),
 });
 

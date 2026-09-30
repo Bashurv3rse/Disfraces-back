@@ -6,22 +6,30 @@ import { crearAlquiler } from "../alquileres/alquileres.service";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
+function calcularDias(fechaInicio: string, fechaFin: string): number {
+  const msPorDia = 1000 * 60 * 60 * 24;
+  const inicio = new Date(fechaInicio);
+  const fin = new Date(fechaFin);
+  return Math.max(1, Math.round((fin.getTime() - inicio.getTime()) / msPorDia));
+}
+
 export async function crearSesionCheckout(datos: CrearSesionInput, usuarioId: string) {
   const disfraces = await prisma.disfrazFisico.findMany({ where: { id: { in: datos.disfraces } } });
   if (disfraces.length !== datos.disfraces.length) {
     throw new Error("Alguno de los disfraces del carrito ya no existe");
   }
 
-  const montoTotal = disfraces.reduce((s: number, d: { precioAlquiler: unknown }) => s + Number(d.precioAlquiler), 0);
+  const dias = calcularDias(datos.fechaInicio, datos.fechaFin);
+  const montoTotal = disfraces.reduce((s: number, d: { precioAlquiler: unknown }) => s + Number(d.precioAlquiler), 0) * dias;
   const montoGarantia = Math.round(montoTotal * 0.25 * 100) / 100;
 
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = disfraces.map((d: { nombre: string; precioAlquiler: unknown }) => ({
     price_data: {
       currency: "pen",
-      product_data: { name: `Alquiler: ${d.nombre}` },
+      product_data: { name: `Alquiler: ${d.nombre} (S/${Number(d.precioAlquiler)}/día)` },
       unit_amount: Math.round(Number(d.precioAlquiler) * 100),
     },
-    quantity: 1,
+    quantity: dias,
   }));
 
   lineItems.push({
@@ -38,8 +46,6 @@ export async function crearSesionCheckout(datos: CrearSesionInput, usuarioId: st
     line_items: lineItems,
     success_url: `${FRONTEND_URL}/pago-exitoso?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${FRONTEND_URL}/catalogo`,
-    // La reserva real NO se crea aquí — solo al confirmar el pago (ver
-    // confirmarPago) — esto evita alquileres "fantasma" de un pago que nunca se completó.
     metadata: {
       usuarioId,
       fechaInicio: datos.fechaInicio,

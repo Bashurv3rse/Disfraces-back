@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { registro, login, listarUsuariosController, actualizarRolController, refrescar } from "./auth.controller";
+import { registro, login, refrescar, logout, listarUsuariosController, actualizarRolController } from "./auth.controller";
 import { verificarToken, requiereRol } from "./auth.middleware";
 
 export const authRouter = Router();
@@ -7,6 +7,7 @@ export const authRouter = Router();
 authRouter.post("/registro", registro);
 authRouter.post("/login", login);
 authRouter.post("/refrescar", refrescar);
+authRouter.post("/logout", verificarToken, logout);
 
 authRouter.get("/perfil", verificarToken, (req, res) => {
   res.json({ usuario: req.usuario });

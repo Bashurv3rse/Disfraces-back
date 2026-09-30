@@ -1,6 +1,13 @@
 import { Request, Response } from "express";
-import { registroSchema, loginSchema } from "./auth.schema";
-import { registrarUsuario, iniciarSesion } from "./auth.service";
+import { registroSchema, loginSchema, actualizarRolSchema } from "./auth.schema";
+import {
+  registrarUsuario,
+  iniciarSesion,
+  refrescarAccessToken,
+  cerrarSesionesUsuario,
+  listarUsuarios,
+  actualizarRolUsuario,
+} from "./auth.service";
 import { registrarEventoSeguridad } from "../../common/logger";
 
 export async function registro(req: Request, res: Response) {
@@ -45,8 +52,24 @@ export async function login(req: Request, res: Response) {
   }
 }
 
-import { actualizarRolSchema } from "./auth.schema";
-import { listarUsuarios, actualizarRolUsuario } from "./auth.service";
+export async function refrescar(req: Request, res: Response) {
+  const { refreshToken } = req.body;
+  if (!refreshToken || typeof refreshToken !== "string") {
+    return res.status(400).json({ mensaje: "Falta el refresh token" });
+  }
+  try {
+    const resultado = await refrescarAccessToken(refreshToken);
+    return res.json(resultado);
+  } catch (error: any) {
+    return res.status(401).json({ mensaje: error.message });
+  }
+}
+
+export async function logout(req: Request, res: Response) {
+  await cerrarSesionesUsuario(req.usuario!.id);
+  registrarEventoSeguridad({ evento: "LOGOUT_TODAS_LAS_SESIONES", usuarioId: req.usuario!.id, ip: req.ip });
+  return res.json({ mensaje: "Sesión cerrada en todos los dispositivos" });
+}
 
 export async function listarUsuariosController(_req: Request, res: Response) {
   const usuarios = await listarUsuarios();
@@ -64,20 +87,5 @@ export async function actualizarRolController(req: Request, res: Response) {
     return res.json(usuario);
   } catch (error: any) {
     return res.status(404).json({ mensaje: error.message });
-  }
-}
-
-import { refrescarAccessToken } from "./auth.service";
-
-export async function refrescar(req: Request, res: Response) {
-  const { refreshToken } = req.body;
-  if (!refreshToken || typeof refreshToken !== "string") {
-    return res.status(400).json({ mensaje: "Falta el refresh token" });
-  }
-  try {
-    const resultado = await refrescarAccessToken(refreshToken);
-    return res.json(resultado);
-  } catch (error: any) {
-    return res.status(401).json({ mensaje: error.message });
   }
 }

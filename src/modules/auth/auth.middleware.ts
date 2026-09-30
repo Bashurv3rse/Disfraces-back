@@ -1,43 +1,51 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { prisma } from "../../config/prisma";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
-interface PayloadToken {
-  sub: string;
-  rol: string;
+declare global {
+  namespace Express {
+    interface Request {
+      usuario?: { id: string; rol: string };
+    }
+  }
 }
 
-// Verifica que venga un token válido en el header Authorization
-export function verificarToken(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+export async function verificarToken(req: Request, res: Response, next: NextFunction) {
+  const encabezado = req.headers.authorization;
+  if (!encabezado || !encabezado.startsWith("Bearer ")) {
     return res.status(401).json({ mensaje: "Token no proporcionado" });
   }
 
-  const token = authHeader.split(" ")[1];
+  const token = encabezado.split(" ")[1];
 
+  let payload: { sub: string; rol: string; jti?: string };
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as PayloadToken;
-    req.usuario = { id: payload.sub, rol: payload.rol };
-    next();
-  } catch (error) {
+    payload = jwt.verify(token, JWT_SECRET) as { sub: string; rol: string; jti?: string };
+  } catch {
     return res.status(401).json({ mensaje: "Token inválido o expirado" });
   }
+
+  // Revocación instantánea: si la sesión ya no existe (logout en cualquier
+  // dispositivo), el access token deja de servir de inmediato, aunque su
+  // firma y su expiración natural sigan siendo válidas.
+  if (payload.jti) {
+    const sesion = await prisma.sesionActiva.findUnique({ where: { tokenId: payload.jti } });
+    if (!sesion || sesion.usuarioId !== payload.sub) {
+      return res.status(401).json({ mensaje: "Esta sesión fue cerrada. Vuelve a iniciar sesión." });
+    }
+  }
+
+  req.usuario = { id: payload.sub, rol: payload.rol };
+  next();
 }
 
-// Verifica que el usuario autenticado tenga alguno de los roles permitidos
 export function requiereRol(...rolesPermitidos: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.usuario) {
-      return res.status(401).json({ mensaje: "No autenticado" });
-    }
-
-    if (!rolesPermitidos.includes(req.usuario.rol)) {
+    if (!req.usuario || !rolesPermitidos.includes(req.usuario.rol)) {
       return res.status(403).json({ mensaje: "No tienes permisos para esta acción" });
     }
-
     next();
   };
 }

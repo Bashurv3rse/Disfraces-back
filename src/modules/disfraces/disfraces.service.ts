@@ -8,6 +8,7 @@ export async function crearDisfraz(datos: CrearDisfrazInput) {
       tipoDisfraz: datos.tipoDisfraz,
       temporadaEvento: datos.temporadaEvento,
       precioAlquiler: datos.precioAlquiler,
+      imagenUrl: datos.imagenUrl,
     },
   });
 

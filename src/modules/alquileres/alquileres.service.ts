@@ -4,9 +4,17 @@ import { CrearAlquilerInput } from "./alquileres.schema";
 const NOMBRE_DIA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const NOMBRE_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
+function calcularDias(fechaInicio: string, fechaFin: string): number {
+  const msPorDia = 1000 * 60 * 60 * 24;
+  const inicio = new Date(fechaInicio);
+  const fin = new Date(fechaFin);
+  return Math.max(1, Math.round((fin.getTime() - inicio.getTime()) / msPorDia));
+}
+
 export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string, stripeSessionId?: string) {
   const disfraces = await prisma.disfrazFisico.findMany({ where: { id: { in: datos.disfraces } } });
-  const montoTotal = disfraces.reduce((s: number, d: { precioAlquiler: unknown }) => s + Number(d.precioAlquiler), 0);
+  const dias = calcularDias(datos.fechaInicio, datos.fechaFin);
+  const montoTotal = disfraces.reduce((s: number, d: { precioAlquiler: unknown }) => s + Number(d.precioAlquiler), 0) * dias;
   const montoGarantia = Math.round(montoTotal * 0.25 * 100) / 100;
 
   return prisma.alquiler.create({
