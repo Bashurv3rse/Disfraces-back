@@ -64,12 +64,10 @@ export async function confirmarPago(sessionId: string, usuarioId: string) {
   if (session.payment_status !== "paid") {
     throw new Error("El pago aún no se ha confirmado con Stripe");
   }
-  // Nunca confiar en el session_id sin más: debe pertenecer al usuario autenticado.
   if (session.metadata?.usuarioId !== usuarioId) {
     throw new Error("Esta sesión de pago no corresponde a tu usuario");
   }
 
-  // Idempotencia: si el cliente recarga la página de éxito, no se duplica el alquiler.
   const existente = await prisma.alquiler.findUnique({
     where: { stripeSessionId: sessionId },
     include: { disfraces: { include: { disfrazFisico: true } } },
@@ -78,14 +76,29 @@ export async function confirmarPago(sessionId: string, usuarioId: string) {
 
   const disfrazIds: string[] = JSON.parse(session.metadata!.disfraces);
 
-  return crearAlquiler(
-    {
-      fechaInicio: session.metadata!.fechaInicio,
-      fechaFin: session.metadata!.fechaFin,
-      evento: session.metadata!.evento || undefined,
-      disfraces: disfrazIds,
-    },
-    usuarioId,
-    sessionId
-  );
+  try {
+    return await crearAlquiler(
+      {
+        fechaInicio: session.metadata!.fechaInicio,
+        fechaFin: session.metadata!.fechaFin,
+        evento: session.metadata!.evento || undefined,
+        disfraces: disfrazIds,
+      },
+      usuarioId,
+      sessionId
+    );
+  } catch (error: any) {
+    // Condición de carrera: dos peticiones casi simultáneas (típico de
+    // React StrictMode en desarrollo, que duplica el efecto) pasaron el
+    // chequeo de "no existe" al mismo tiempo. La primera ya lo creó — en
+    // vez de fallar, devolvemos ese alquiler recién creado.
+    if (error.code === "P2002" && error.meta?.target?.includes("stripeSessionId")) {
+      const yaCreado = await prisma.alquiler.findUnique({
+        where: { stripeSessionId: sessionId },
+        include: { disfraces: { include: { disfrazFisico: true } } },
+      });
+      if (yaCreado) return yaCreado;
+    }
+    throw error;
+  }
 }
