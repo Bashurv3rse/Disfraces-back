@@ -78,9 +78,17 @@ export async function refrescarAccessToken(refreshToken: string) {
     throw new Error("Usuario no encontrado");
   }
 
-  const accessToken = jwt.sign({ sub: usuario.id, rol: usuario.rol }, JWT_SECRET, {
-    expiresIn: JWT_EXPIRES_IN,
-  } as jwt.SignOptions);
+  const accessToken = jwt.sign(
+    {
+      sub: usuario.id,
+      rol: usuario.rol,
+      jti: payload.jti,
+    },
+    JWT_SECRET,
+    {
+      expiresIn: JWT_EXPIRES_IN,
+    } as jwt.SignOptions
+  );
 
   return { accessToken };
 }
