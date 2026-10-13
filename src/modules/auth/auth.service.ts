@@ -135,3 +135,24 @@ function sinPassword(usuario: { password: string; [key: string]: any }) {
   const { password, ...resto } = usuario;
   return resto;
 }
+
+export async function obtenerPerfilUsuario(id: string) {
+  const usuario = await prisma.usuario.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      nombre: true,
+      email: true,
+      telefono: true,
+      direccion: true,
+      rol: true,
+      creadoEn: true,
+    },
+  });
+
+  if (!usuario) {
+    throw new Error("Usuario no encontrado");
+  }
+
+  return usuario;
+}

@@ -5,6 +5,8 @@ export async function crearDisfraz(datos: CrearDisfrazInput) {
   const disfraz = await prisma.disfrazFisico.create({
     data: {
       nombre: datos.nombre,
+      familia: datos.familia,
+      grupoCompatibilidad: datos.grupoCompatibilidad,
       tipoDisfraz: datos.tipoDisfraz,
       temporadaEvento: datos.temporadaEvento,
       precioAlquiler: datos.precioAlquiler,
@@ -57,8 +59,15 @@ function faseLavadoPorDias(diasTranscurridos: number): FaseLavado {
   return null; // 3+ días hábiles: el ciclo terminó
 }
 
+// Un disfraz está "en lavado" mientras dura su ciclo de 3 días hábiles tras una
+// devolución. Usa la misma regla que calcularEstado, así que nunca se contradicen.
+function estaEnLavado(d: { estadoManual: string | null; fechaSuspension: Date | null }): boolean {
+  if (d.estadoManual !== "SUSPENDIDO" || !d.fechaSuspension) return false;
+  return faseLavadoPorDias(diasHabilesTranscurridos(d.fechaSuspension, new Date())) !== null;
+}
+
 // Libera automáticamente los disfraces cuyo ciclo de lavado (3 días hábiles) ya
-// terminó — sincronizado con el reloj real, sin necesidad de que el admin lo confirme.
+// terminó, sincronizado con el reloj real y sin confirmación del administrador.
 async function limpiarSuspensionesVencidas() {
   const suspendidos = await prisma.disfrazFisico.findMany({
     where: { estadoManual: "SUSPENDIDO", fechaSuspension: { not: null } },
@@ -95,7 +104,7 @@ function contarFaltantes(disfraz: {
 }
 
 // Prendas que pertenecen "de casa" a este disfraz pero ahora completan otro
-// (fueron prestadas) — es la alerta de "a este disfraz se le usó una pieza".
+// (fueron prestadas): es la alerta de "a este disfraz se le usó una pieza".
 function contarPrestamosSalientes(disfraz: { id: string; prendasHogar: { disfrazActualId: string }[] }) {
   return disfraz.prendasHogar.filter((p) => p.disfrazActualId !== disfraz.id).length;
 }
@@ -115,8 +124,6 @@ function calcularEstado(
     const dias = diasHabilesTranscurridos(disfraz.fechaSuspension, new Date());
     const fase = faseLavadoPorDias(dias);
     if (fase) return { estado: "SUSPENDIDO", faseLavado: fase };
-    // Si ya pasaron los 3 días hábiles, limpiarSuspensionesVencidas() ya lo habrá
-    // liberado antes de llegar aquí — este caso es solo un respaldo.
   }
   if (disfracesAlquiladosAhora.has(disfraz.id)) return { estado: "ALQUILADO", faseLavado: null };
   if (contarFaltantes(disfraz) > 0) return { estado: "INCOMPLETO", faseLavado: null };
@@ -125,7 +132,7 @@ function calcularEstado(
 
 async function obtenerAlquiladosAhoraIds(): Promise<Set<string>> {
   // Un disfraz sigue "alquilado" mientras el alquiler no se cierre con una
-  // devolución — aunque ya haya pasado la fecha de fin, permanece bloqueado.
+  // devolución, aunque ya haya pasado la fecha de fin.
   const filas = await prisma.alquilerDisfraz.findMany({
     where: { alquiler: { estado: { in: ["ACTIVO", "PENDIENTE"] } } },
     select: { disfrazFisicoId: true },
@@ -186,6 +193,138 @@ export async function obtenerDisfrazConEstado(id: string) {
   };
 }
 
+// --- Detalle de inventario (solo admin): qué prenda reemplaza a cuál ---
+
+export type SituacionPrenda = "PRESENTE" | "REEMPLAZADA" | "FALTANTE" | "DANADA" | "PRESTADA";
+
+interface ResumenPrendaAjena {
+  id: string;
+  nombre: string;
+  color: string;
+  talla: string;
+  origenId: string;
+  origenNombre: string;
+}
+
+interface PrendaDetalle {
+  id: string;
+  nombre: string;
+  tipo: string;
+  color: string;
+  talla: string;
+  calidad: string;
+  estado: string;
+  situacion: SituacionPrenda;
+  prestadaA: { id: string; nombre: string } | null;
+  reemplazo: ResumenPrendaAjena | null;
+}
+
+// El emparejamiento prenda-reemplazo se hace por tipo, igual que contarFaltantes:
+// cada "hueco" (prenda propia faltante/dañada, o prestada a otro disfraz) toma una
+// prenda prestada y disponible del mismo tipo. Así el detalle y el estado general
+// del disfraz nunca se contradicen.
+export async function obtenerDetalleInventario(id: string) {
+  await limpiarSuspensionesVencidas();
+
+  const d = await prisma.disfrazFisico.findUnique({
+    where: { id },
+    include: {
+      prendasHogar: { include: { disfrazActual: { select: { id: true, nombre: true } } } },
+      prendasActuales: { include: { disfrazHogar: { select: { id: true, nombre: true } } } },
+    },
+  });
+  if (!d) return null;
+
+  const alquiladosAhora = await obtenerAlquiladosAhoraIds();
+  const { estado, faseLavado } = calcularEstado(d, alquiladosAhora);
+
+  // Prendas de otros disfraces que hoy completan a este.
+  const prestadasRecibidas = d.prendasActuales.filter((p) => p.disfrazHogarId !== d.id);
+  const usadas = new Set<string>();
+  const reemplazaA = new Map<string, string>(); // id prenda prestada -> id prenda propia que cubre
+
+  const resumen = (r: (typeof prestadasRecibidas)[number] | null): ResumenPrendaAjena | null =>
+    r
+      ? { id: r.id, nombre: r.nombre, color: r.color, talla: r.talla, origenId: r.disfrazHogar.id, origenNombre: r.disfrazHogar.nombre }
+      : null;
+
+  const tomarReemplazo = (tipo: string, huecoId: string) => {
+    const r = prestadasRecibidas.find((x) => x.estado === "DISPONIBLE" && x.tipo === tipo && !usadas.has(x.id));
+    if (!r) return null;
+    usadas.add(r.id);
+    reemplazaA.set(r.id, huecoId);
+    return r;
+  };
+
+  const prendas = d.prendasHogar.map((p): PrendaDetalle => {
+    const base = {
+      id: p.id,
+      nombre: p.nombre,
+      tipo: p.tipo as string,
+      color: p.color,
+      talla: p.talla,
+      calidad: p.calidad,
+      estado: p.estado as string,
+    };
+
+    // Prenda de este disfraz que hoy está prestada a otro.
+    if (p.disfrazActualId !== d.id) {
+      const reemplazo = tomarReemplazo(p.tipo, p.id);
+      return {
+        ...base,
+        situacion: "PRESTADA",
+        prestadaA: { id: p.disfrazActual.id, nombre: p.disfrazActual.nombre },
+        reemplazo: resumen(reemplazo),
+      };
+    }
+
+    if (p.estado === "DISPONIBLE") {
+      return { ...base, situacion: "PRESENTE", prestadaA: null, reemplazo: null };
+    }
+
+    const reemplazo = tomarReemplazo(p.tipo, p.id);
+    return {
+      ...base,
+      situacion: reemplazo ? "REEMPLAZADA" : p.estado === "DANADA" ? "DANADA" : "FALTANTE",
+      prestadaA: null,
+      reemplazo: resumen(reemplazo),
+    };
+  });
+
+  const alquiladoEste = alquiladosAhora.has(d.id);
+
+  const prestamosRecibidos = prestadasRecibidas.map((r) => ({
+    id: r.id,
+    nombre: r.nombre,
+    tipo: r.tipo as string,
+    color: r.color,
+    talla: r.talla,
+    estado: r.estado as string,
+    origenId: r.disfrazHogar.id,
+    origenNombre: r.disfrazHogar.nombre,
+    reemplazaA: reemplazaA.get(r.id) ?? null,
+    // Sobrante: llegó en préstamo pero ya no hace falta (por ejemplo, apareció la original).
+    sobrante: r.estado === "DISPONIBLE" && !usadas.has(r.id),
+    puedeDevolverse: r.estado === "DISPONIBLE" && !alquiladoEste && !alquiladosAhora.has(r.disfrazHogar.id),
+  }));
+
+  return {
+    id: d.id,
+    nombre: d.nombre,
+    familia: d.familia,
+    grupoCompatibilidad: d.grupoCompatibilidad,
+    tipoDisfraz: d.tipoDisfraz,
+    precioAlquiler: d.precioAlquiler,
+    estado,
+    faseLavado,
+    faltantes: contarFaltantes(d),
+    completo: contarFaltantes(d) === 0,
+    prestamosSalientes: contarPrestamosSalientes(d),
+    prendas,
+    prestamosRecibidos,
+  };
+}
+
 export async function obtenerTemporadasDisponibles() {
   const filas = await prisma.disfrazFisico.findMany({ select: { temporadaEvento: true }, distinct: ["temporadaEvento"] });
   return filas.map((f: { temporadaEvento: string }) => f.temporadaEvento);
@@ -197,8 +336,7 @@ export async function obtenerTiposDisponibles() {
 }
 
 // --- Gestión manual del inventario físico (admin) ---
-// Todas bloqueadas mientras el disfraz esté alquilado — ni el admin puede tocarlo
-// hasta que el cliente lo devuelva.
+// Todas bloqueadas mientras el disfraz esté alquilado.
 
 export async function actualizarEstadoManual(id: string, estado: "EN_REPARACION" | "SUSPENDIDO" | null) {
   if (await estaAlquiladoAhora(id)) throw new Error("Este disfraz está alquilado — no se puede modificar hasta que se devuelva.");
@@ -208,36 +346,87 @@ export async function actualizarEstadoManual(id: string, estado: "EN_REPARACION"
 export async function actualizarPrenda(id: string, datos: { estado?: "DISPONIBLE" | "DANADA" | "FALTANTE"; calidad?: string }) {
   const prenda = await prisma.prenda.findUnique({ where: { id } });
   if (!prenda) throw new Error("Prenda no encontrada");
-  if (await estaAlquiladoAhora(prenda.disfrazHogarId)) {
+
+  // Se bloquea si el disfraz de origen O el disfraz donde la prenda está hoy están alquilados.
+  const alquilados = await obtenerAlquiladosAhoraIds();
+  if (alquilados.has(prenda.disfrazHogarId) || alquilados.has(prenda.disfrazActualId)) {
     throw new Error("Este disfraz está alquilado — no se puede modificar hasta que se devuelva.");
   }
   return prisma.prenda.update({ where: { id }, data: datos });
 }
 
-export async function buscarCandidatos(prendaId: string) {
+export interface CandidatoReemplazo {
+  id: string;
+  nombre: string;
+  calidad: string;
+  color: string;
+  talla: string;
+  disfrazOrigenId: string;
+  disfrazOrigenNombre: string;
+  disfrazOrigenAlquilado: boolean;
+  mismaFamilia: boolean;
+  mismaTalla: boolean;
+  mismoColor: boolean;
+}
+
+// Candidatos para reemplazar una prenda. Reglas:
+//  - mismo tipo de prenda, disponible y "en su casa" (no prestada ya a otro disfraz);
+//  - su disfraz de origen debe pertenecer al MISMO grupo de compatibilidad que el
+//    disfraz que la necesita (un disfraz sin grupo no intercambia piezas con nadie);
+//  - su disfraz de origen NO puede estar en ciclo de lavado;
+//  - orden: disfraces no alquilados primero, luego misma familia, misma talla, mismo color.
+// "Disfraz que la necesita": por defecto el de origen de la prenda; en una devolución
+// se indica explícitamente el disfraz donde la prenda estaba en uso.
+export async function buscarCandidatos(prendaId: string, disfrazNecesitadoId?: string): Promise<CandidatoReemplazo[]> {
+  // Libera primero los lavados ya terminados, para que no bloqueen candidatos de más.
+  await limpiarSuspensionesVencidas();
+
   const prenda = await prisma.prenda.findUnique({ where: { id: prendaId } });
   if (!prenda) throw new Error("Prenda no encontrada");
 
+  const necesitado = await prisma.disfrazFisico.findUnique({
+    where: { id: disfrazNecesitadoId ?? prenda.disfrazHogarId },
+  });
+  if (!necesitado) throw new Error("Disfraz no encontrado");
+
+  const grupo = necesitado.grupoCompatibilidad;
+  if (!grupo) return [];
+
   const candidatas = await prisma.prenda.findMany({
-    where: { tipo: prenda.tipo, estado: "DISPONIBLE", id: { not: prendaId } },
+    where: {
+      tipo: prenda.tipo,
+      estado: "DISPONIBLE",
+      id: { not: prendaId },
+      disfrazHogarId: { not: necesitado.id },
+      disfrazHogar: { grupoCompatibilidad: grupo },
+    },
     include: { disfrazHogar: true },
   });
-  const enCasa = candidatas.filter((p: any) => p.disfrazActualId === p.disfrazHogarId);
+  const enCasa = candidatas.filter(
+    (p: any) => p.disfrazActualId === p.disfrazHogarId && !estaEnLavado(p.disfrazHogar)
+  );
 
   const alquiladosAhora = await obtenerAlquiladosAhoraIds();
 
-  return enCasa
-    .map((p: any) => ({
-      id: p.id,
-      nombre: p.nombre,
-      calidad: p.calidad,
-      color: p.color,
-      talla: p.talla,
-      disfrazOrigenId: p.disfrazHogarId,
-      disfrazOrigenNombre: p.disfrazHogar.nombre,
-      disfrazOrigenAlquilado: alquiladosAhora.has(p.disfrazHogarId),
-    }))
-    .sort((a: any, b: any) => Number(a.disfrazOrigenAlquilado) - Number(b.disfrazOrigenAlquilado));
+  const candidatos: CandidatoReemplazo[] = enCasa.map((p: any) => ({
+    id: p.id,
+    nombre: p.nombre,
+    calidad: p.calidad,
+    color: p.color,
+    talla: p.talla,
+    disfrazOrigenId: p.disfrazHogarId,
+    disfrazOrigenNombre: p.disfrazHogar.nombre,
+    disfrazOrigenAlquilado: alquiladosAhora.has(p.disfrazHogarId),
+    mismaFamilia: !!necesitado.familia && p.disfrazHogar.familia === necesitado.familia,
+    mismaTalla: p.talla === prenda.talla,
+    mismoColor: p.color === prenda.color,
+  }));
+
+  const puntaje = (c: CandidatoReemplazo) => (c.mismaFamilia ? 4 : 0) + (c.mismaTalla ? 2 : 0) + (c.mismoColor ? 1 : 0);
+
+  return candidatos.sort(
+    (a, b) => Number(a.disfrazOrigenAlquilado) - Number(b.disfrazOrigenAlquilado) || puntaje(b) - puntaje(a)
+  );
 }
 
 export async function confirmarPrestamo(prendaNecesitadaId: string, prendaDonanteId: string) {
@@ -246,6 +435,13 @@ export async function confirmarPrestamo(prendaNecesitadaId: string, prendaDonant
   if (await estaAlquiladoAhora(prendaNecesitada.disfrazHogarId)) {
     throw new Error("Este disfraz está alquilado — no se puede modificar hasta que se devuelva.");
   }
+
+  // El servidor revalida la compatibilidad: no se confía en que el frontend
+  // solo ofrezca candidatos válidos.
+  const candidatos = await buscarCandidatos(prendaNecesitadaId);
+  const elegido = candidatos.find((c) => c.id === prendaDonanteId);
+  if (!elegido) throw new Error("La prenda elegida no es un reemplazo válido: debe ser de un disfraz compatible y que no esté en lavado.");
+  if (elegido.disfrazOrigenAlquilado) throw new Error("El disfraz donante está alquilado en este momento.");
 
   const donante = await prisma.prenda.update({
     where: { id: prendaDonanteId },
@@ -264,4 +460,43 @@ export async function confirmarPrestamo(prendaNecesitadaId: string, prendaDonant
   });
 
   return donante;
+}
+
+// Devuelve una prenda prestada a su disfraz de origen.
+export async function devolverPrestamo(prendaId: string) {
+  const prenda = await prisma.prenda.findUnique({ where: { id: prendaId } });
+  if (!prenda) throw new Error("Prenda no encontrada");
+
+  if (prenda.disfrazActualId === prenda.disfrazHogarId) {
+    throw new Error("Esta prenda no está prestada: ya está en su disfraz de origen.");
+  }
+  if (prenda.estado !== "DISPONIBLE") {
+    throw new Error("Solo se puede devolver una prenda en buen estado.");
+  }
+
+  const alquilados = await obtenerAlquiladosAhoraIds();
+  if (alquilados.has(prenda.disfrazActualId) || alquilados.has(prenda.disfrazHogarId)) {
+    throw new Error("Alguno de los dos disfraces está alquilado — no se puede mover la prenda hasta que se devuelva.");
+  }
+
+  const [actual, hogar] = await Promise.all([
+    prisma.disfrazFisico.findUnique({ where: { id: prenda.disfrazActualId } }),
+    prisma.disfrazFisico.findUnique({ where: { id: prenda.disfrazHogarId } }),
+  ]);
+
+  const devuelta = await prisma.prenda.update({
+    where: { id: prendaId },
+    data: { disfrazActualId: prenda.disfrazHogarId },
+  });
+
+  await prisma.sustitucion.create({
+    data: {
+      prendaId,
+      disfrazOrigenId: prenda.disfrazActualId,
+      disfrazDestinoId: prenda.disfrazHogarId,
+      motivo: `Préstamo devuelto: ${prenda.nombre} vuelve de ${actual?.nombre} a ${hogar?.nombre}`,
+    },
+  });
+
+  return devuelta;
 }

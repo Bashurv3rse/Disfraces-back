@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ const origenPermitido = process.env.CORS_ORIGIN || "http://localhost:5173";
 app.use(cors({ origin: origenPermitido, credentials: true }));
 
 app.use(express.json());
+app.use(cookieParser());
 
 // --- Rate limiting contra fuerza bruta en login/registro (control preventivo) ---
 const limitadorLogin = rateLimit({

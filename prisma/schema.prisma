@@ -54,19 +54,23 @@ enum EstadoPrenda {
 }
 
 model DisfrazFisico {
-  id              String               @id @default(uuid())
-  nombre          String
-  tipoDisfraz     String
-  temporadaEvento String
-  precioAlquiler  Decimal              @db.Decimal(10, 2)
-  estadoManual    EstadoManualDisfraz?
-  fechaSuspension DateTime?
-  imagenUrl       String?
-  creadoEn        DateTime             @default(now())
+  id                  String               @id @default(uuid())
+  nombre              String
+  familia             String?
+  grupoCompatibilidad String?
+  tipoDisfraz         String
+  temporadaEvento     String
+  precioAlquiler      Decimal              @db.Decimal(10, 2)
+  estadoManual        EstadoManualDisfraz?
+  fechaSuspension     DateTime?
+  imagenUrl           String?
+  creadoEn            DateTime             @default(now())
 
   prendasHogar    Prenda[]          @relation("PrendaHogar")
   prendasActuales Prenda[]          @relation("PrendaActual")
   alquileres      AlquilerDisfraz[]
+
+  @@index([grupoCompatibilidad])
 }
 
 model Prenda {

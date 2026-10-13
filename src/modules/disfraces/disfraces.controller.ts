@@ -9,12 +9,14 @@ import {
   crearDisfraz,
   listarDisfraces,
   obtenerDisfrazConEstado,
+  obtenerDetalleInventario,
   obtenerTemporadasDisponibles,
   obtenerTiposDisponibles,
   actualizarEstadoManual,
   actualizarPrenda,
   buscarCandidatos,
   confirmarPrestamo,
+  devolverPrestamo,
 } from "./disfraces.service";
 
 export async function crear(req: Request, res: Response) {
@@ -43,6 +45,12 @@ export async function obtenerUno(req: Request, res: Response) {
   const disfraz = await obtenerDisfrazConEstado(req.params.id);
   if (!disfraz) return res.status(404).json({ mensaje: "Disfraz no encontrado" });
   return res.json(disfraz);
+}
+
+export async function detalleInventario(req: Request, res: Response) {
+  const detalle = await obtenerDetalleInventario(req.params.id);
+  if (!detalle) return res.status(404).json({ mensaje: "Disfraz no encontrado" });
+  return res.json(detalle);
 }
 
 export async function temporadas(_req: Request, res: Response) {
@@ -89,6 +97,15 @@ export async function prestamoPrenda(req: Request, res: Response) {
   try {
     const donante = await confirmarPrestamo(req.params.prendaId, parseo.data.prendaDonanteId);
     return res.status(201).json(donante);
+  } catch (error: any) {
+    return res.status(409).json({ mensaje: error.message });
+  }
+}
+
+export async function devolverPrestamoPrenda(req: Request, res: Response) {
+  try {
+    const prenda = await devolverPrestamo(req.params.prendaId);
+    return res.json(prenda);
   } catch (error: any) {
     return res.status(409).json({ mensaje: error.message });
   }

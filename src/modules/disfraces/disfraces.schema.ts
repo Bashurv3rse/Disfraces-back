@@ -9,6 +9,8 @@ const prendaSchema = z.object({
 
 export const crearDisfrazSchema = z.object({
   nombre: z.string().min(2),
+  familia: z.string().min(2).optional(),
+  grupoCompatibilidad: z.string().min(2).optional(),
   tipoDisfraz: z.string().min(2),
   temporadaEvento: z.string().min(1),
   precioAlquiler: z.number().positive(),

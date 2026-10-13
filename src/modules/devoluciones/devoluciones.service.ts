@@ -1,20 +1,12 @@
 import { prisma } from "../../config/prisma";
 import { CrearDevolucionInput } from "./devoluciones.schema";
+import { buscarCandidatos } from "../disfraces/disfraces.service";
 
-async function buscarDonante(tipo: string, prendaNecesitadaId: string) {
-  const candidatas = await prisma.prenda.findMany({
-    where: { tipo: tipo as any, estado: "DISPONIBLE", id: { not: prendaNecesitadaId } },
-  });
-  const enCasa = candidatas.filter((p: any) => p.disfrazActualId === p.disfrazHogarId);
-  if (enCasa.length === 0) return null;
-
-  const disfrazIds = enCasa.map((p: any) => p.disfrazHogarId);
-  const ocupados = await prisma.alquilerDisfraz.findMany({
-    where: { disfrazFisicoId: { in: disfrazIds }, alquiler: { estado: { in: ["ACTIVO", "PENDIENTE"] } } },
-    select: { disfrazFisicoId: true },
-  });
-  const idsOcupados = new Set(ocupados.map((o: { disfrazFisicoId: string }) => o.disfrazFisicoId));
-  return enCasa.find((p: any) => !idsOcupados.has(p.disfrazHogarId)) || null;
+// Misma lógica (y mismo orden de similitud) que la búsqueda manual del
+// administrador: solo prendas de disfraces del mismo grupo de compatibilidad.
+async function buscarDonante(prendaId: string, disfrazNecesitadoId: string) {
+  const candidatos = await buscarCandidatos(prendaId, disfrazNecesitadoId);
+  return candidatos.find((c) => !c.disfrazOrigenAlquilado) || null;
 }
 
 export async function crearDevolucion(datos: CrearDevolucionInput, usuarioId: string) {
@@ -40,42 +32,51 @@ export async function crearDevolucion(datos: CrearDevolucionInput, usuarioId: st
 
   await prisma.alquiler.update({ where: { id: datos.alquilerId }, data: { estado: "FINALIZADO" } });
 
-  // Todo disfraz devuelto entra en "suspensión" (lavado → planchado → empaquetado,
-  // 3 días hábiles) sin importar el estado en que haya vuelto. Se libera solo,
-  // sincronizado con el reloj real — no hace falta que el admin lo confirme.
+  // Todo disfraz devuelto entra en "suspensión" (lavado, planchado, empaquetado:
+  // 3 días hábiles) sin importar el estado en que haya vuelto.
   const disfrazIds = [...new Set(alquiler.disfraces.map((ad: any) => ad.disfrazFisicoId))];
   await prisma.disfrazFisico.updateMany({
     where: { id: { in: disfrazIds } },
     data: { estadoManual: "SUSPENDIDO", fechaSuspension: new Date() },
   });
 
-  const sustituciones: { prenda: string; disfrazNecesitado: string }[] = [];
-
+  // Paso 1: registrar el estado reportado de TODAS las prendas con problema antes de
+  // buscar reemplazos. Así una prenda que esta misma devolución reporta como dañada
+  // nunca puede ofrecerse como donante de otra.
+  const afectadas: { prenda: { id: string; nombre: string; disfrazActualId: string }; estadoPrenda: string }[] = [];
   for (const item of datos.prendas) {
     if (item.estadoPrenda === "BUEN_ESTADO") continue;
-
-    const prendaNecesitada = await prisma.prenda.update({
+    const prenda = await prisma.prenda.update({
       where: { id: item.prendaId },
       data: { estado: item.estadoPrenda },
     });
+    afectadas.push({ prenda, estadoPrenda: item.estadoPrenda });
+  }
 
-    const donante = await buscarDonante(prendaNecesitada.tipo, prendaNecesitada.id);
-    if (donante) {
-      await prisma.prenda.update({
-        where: { id: donante.id },
-        data: { disfrazActualId: prendaNecesitada.disfrazHogarId },
-      });
-      const disfrazDestino = await prisma.disfrazFisico.findUnique({ where: { id: prendaNecesitada.disfrazHogarId } });
-      await prisma.sustitucion.create({
-        data: {
-          prendaId: donante.id,
-          disfrazOrigenId: donante.disfrazHogarId,
-          disfrazDestinoId: prendaNecesitada.disfrazHogarId,
-          motivo: `${prendaNecesitada.nombre} reportada como ${item.estadoPrenda === "DANADA" ? "dañada" : "faltante"} en ${disfrazDestino?.nombre}`,
-        },
-      });
-      sustituciones.push({ prenda: donante.nombre, disfrazNecesitado: disfrazDestino?.nombre || "" });
-    }
+  // Paso 2: buscar y aplicar un reemplazo compatible para cada una. El reemplazo va al
+  // disfraz donde la prenda estaba EN USO (disfrazActualId), que no siempre es su
+  // disfraz de origen: si era una pieza prestada, el hueco está en el disfraz devuelto.
+  const sustituciones: { prenda: string; disfrazNecesitado: string }[] = [];
+
+  for (const { prenda, estadoPrenda } of afectadas) {
+    const necesitadoId = prenda.disfrazActualId;
+    const donante = await buscarDonante(prenda.id, necesitadoId);
+    if (!donante) continue;
+
+    await prisma.prenda.update({
+      where: { id: donante.id },
+      data: { disfrazActualId: necesitadoId },
+    });
+    const disfrazDestino = await prisma.disfrazFisico.findUnique({ where: { id: necesitadoId } });
+    await prisma.sustitucion.create({
+      data: {
+        prendaId: donante.id,
+        disfrazOrigenId: donante.disfrazOrigenId,
+        disfrazDestinoId: necesitadoId,
+        motivo: `${prenda.nombre} reportada como ${estadoPrenda === "DANADA" ? "dañada" : "faltante"} en ${disfrazDestino?.nombre}`,
+      },
+    });
+    sustituciones.push({ prenda: donante.nombre, disfrazNecesitado: disfrazDestino?.nombre || "" });
   }
 
   return { devolucion, sustituciones };

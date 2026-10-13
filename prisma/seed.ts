@@ -10,6 +10,7 @@ interface PrendaBase {
 
 interface FamiliaDisfraz {
   nombre: string;
+  grupo: string;
   tipoDisfraz: string;
   temporadaEvento: string;
   precioAlquiler: number;
@@ -27,8 +28,10 @@ function tallaPara(tipo: string, indice: number): string {
 }
 
 const familias: FamiliaDisfraz[] = [
+  // ---- Grupo "criollo" ----
   {
     nombre: "Marinera Peruana",
+    grupo: "criollo",
     tipoDisfraz: "Marinera",
     temporadaEvento: "criollo",
     precioAlquiler: 45.0,
@@ -42,6 +45,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Chalán Costeño",
+    grupo: "criollo",
     tipoDisfraz: "Chalán",
     temporadaEvento: "criollo",
     precioAlquiler: 40.0,
@@ -53,8 +57,11 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Zapatos de vestir", tipo: "ZAPATO", color: "negro" },
     ],
   },
+
+  // ---- Familias aisladas (grupo propio: solo se intercambian con sus propias instancias) ----
   {
     nombre: "Spider-Man",
+    grupo: "spider-man",
     tipoDisfraz: "Superhéroe",
     temporadaEvento: "halloween",
     precioAlquiler: 38.0,
@@ -68,6 +75,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Batman",
+    grupo: "batman",
     tipoDisfraz: "Superhéroe",
     temporadaEvento: "halloween",
     precioAlquiler: 42.0,
@@ -81,6 +89,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Superman",
+    grupo: "superman",
     tipoDisfraz: "Superhéroe",
     temporadaEvento: "halloween",
     precioAlquiler: 40.0,
@@ -93,6 +102,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Chucky",
+    grupo: "chucky",
     tipoDisfraz: "Terror",
     temporadaEvento: "halloween",
     precioAlquiler: 35.0,
@@ -103,8 +113,11 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Zapatos de muñeco", tipo: "ZAPATO", color: "negro" },
     ],
   },
+
+  // ---- Grupo "capa-halloween" ----
   {
     nombre: "Bruja Clásica",
+    grupo: "capa-halloween",
     tipoDisfraz: "Bruja",
     temporadaEvento: "halloween",
     precioAlquiler: 30.0,
@@ -117,6 +130,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Mago Misterioso",
+    grupo: "capa-halloween",
     tipoDisfraz: "Mago",
     temporadaEvento: "halloween",
     precioAlquiler: 34.0,
@@ -130,6 +144,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Conde Vampiro",
+    grupo: "capa-halloween",
     tipoDisfraz: "Vampiro",
     temporadaEvento: "halloween",
     precioAlquiler: 36.0,
@@ -141,8 +156,11 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Zapatos de vampiro", tipo: "ZAPATO", color: "negro" },
     ],
   },
+
+  // ---- Grupo "formal" ----
   {
     nombre: "Novio de Boda",
+    grupo: "formal",
     tipoDisfraz: "Novio de Boda",
     temporadaEvento: "boda",
     precioAlquiler: 55.0,
@@ -156,6 +174,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Gala Elegante",
+    grupo: "formal",
     tipoDisfraz: "Gala",
     temporadaEvento: "gala",
     precioAlquiler: 50.0,
@@ -169,6 +188,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Padrino de Boda",
+    grupo: "formal",
     tipoDisfraz: "Padrino",
     temporadaEvento: "boda",
     precioAlquiler: 48.0,
@@ -180,8 +200,11 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Zapatos de vestir", tipo: "ZAPATO", color: "negro" },
     ],
   },
+
+  // ---- Grupo "playa-deportivo" ----
   {
     nombre: "Traje de baño tropical",
+    grupo: "playa-deportivo",
     tipoDisfraz: "Playa",
     temporadaEvento: "verano",
     precioAlquiler: 20.0,
@@ -194,6 +217,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Futbolista",
+    grupo: "playa-deportivo",
     tipoDisfraz: "Fútbol",
     temporadaEvento: "deportivo",
     precioAlquiler: 25.0,
@@ -206,6 +230,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Surfista Playero",
+    grupo: "playa-deportivo",
     tipoDisfraz: "Playa",
     temporadaEvento: "verano",
     precioAlquiler: 22.0,
@@ -216,8 +241,11 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Sandalias deportivas", tipo: "ZAPATO", color: "negro" },
     ],
   },
+
+  // ---- Familia aislada ----
   {
     nombre: "Papá Noel",
+    grupo: "papa-noel",
     tipoDisfraz: "Navidad",
     temporadaEvento: "navidad",
     precioAlquiler: 32.0,
@@ -229,8 +257,11 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Botas de Santa", tipo: "ZAPATO", color: "negro" },
     ],
   },
+
+  // ---- Grupo "ala-y-bota" ----
   {
     nombre: "Torero",
+    grupo: "ala-y-bota",
     tipoDisfraz: "Torero",
     temporadaEvento: "carnaval",
     precioAlquiler: 34.0,
@@ -244,6 +275,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Pirata del Caribe",
+    grupo: "ala-y-bota",
     tipoDisfraz: "Pirata",
     temporadaEvento: "halloween",
     precioAlquiler: 36.0,
@@ -257,6 +289,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Vaquero del Oeste",
+    grupo: "ala-y-bota",
     tipoDisfraz: "Vaquero",
     temporadaEvento: "carnaval",
     precioAlquiler: 33.0,
@@ -268,8 +301,11 @@ const familias: FamiliaDisfraz[] = [
       { nombre: "Botas de vaquero", tipo: "ZAPATO", color: "marrón" },
     ],
   },
+
+  // ---- Grupo "realeza" ----
   {
     nombre: "Reina de Gala",
+    grupo: "realeza",
     tipoDisfraz: "Realeza",
     temporadaEvento: "gala",
     precioAlquiler: 55.0,
@@ -282,6 +318,7 @@ const familias: FamiliaDisfraz[] = [
   },
   {
     nombre: "Rey de Gala",
+    grupo: "realeza",
     tipoDisfraz: "Realeza",
     temporadaEvento: "gala",
     precioAlquiler: 55.0,
@@ -317,6 +354,8 @@ async function main() {
       const disfraz = await prisma.disfrazFisico.create({
         data: {
           nombre: nombreInstancia,
+          familia: familia.nombre,
+          grupoCompatibilidad: familia.grupo,
           tipoDisfraz: familia.tipoDisfraz,
           temporadaEvento: familia.temporadaEvento,
           precioAlquiler: familia.precioAlquiler,
