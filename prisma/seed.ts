@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { sembrarPromociones } from "./promociones";
 
 const prisma = new PrismaClient();
 
@@ -392,7 +393,7 @@ async function main() {
 
   const superman1 = idsCreados.find((d) => d.nombre === "Superman #1")!;
   await prisma.disfrazFisico.update({ where: { id: superman1.id }, data: { estadoManual: "EN_REPARACION" } });
-
+  await sembrarPromociones(prisma);
   console.log(`Listo: ${totalDisfraces} disfraces físicos y ${totalPrendas} prendas creadas.`);
 }
 

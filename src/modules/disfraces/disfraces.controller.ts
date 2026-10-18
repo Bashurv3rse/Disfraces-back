@@ -16,14 +16,30 @@ import {
   actualizarPrenda,
   buscarCandidatos,
   confirmarPrestamo,
+  ErrorDisfraz,
   devolverPrestamo,
 } from "./disfraces.service";
+import { registrarEventoSeguridad } from "../../common/logger";
 
 export async function crear(req: Request, res: Response) {
   const parseo = crearDisfrazSchema.safeParse(req.body);
   if (!parseo.success) return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
-  const disfraz = await crearDisfraz(parseo.data);
-  return res.status(201).json(disfraz);
+
+  try {
+    const disfraz = await crearDisfraz(parseo.data);
+    registrarEventoSeguridad({
+      evento: "DISFRAZ_CREADO",
+      usuarioId: req.usuario!.id,
+      ip: req.ip,
+      detalle: parseo.data.nombre,
+    });
+    return res.status(201).json(disfraz);
+  } catch (error) {
+    if (error instanceof ErrorDisfraz) {
+      return res.status(error.estado).json({ mensaje: error.message });
+    }
+    return res.status(500).json({ mensaje: "No se pudo crear el disfraz" });
+  }
 }
 
 function comaLista(valor: unknown): string[] | undefined {

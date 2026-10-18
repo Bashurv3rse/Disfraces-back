@@ -61,6 +61,14 @@ const limitadorPassword = rateLimit({
   legacyHeaders: false,
 });
 
+const limitadorCotizar = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  message: { mensaje: "Demasiadas consultas de precio. Espera un momento." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
@@ -86,6 +94,7 @@ app.use("/api/proveedores", proveedoresRouter);
 app.use("/api/alquileres", alquileresRouter);
 app.use("/api/devoluciones", devolucionesRouter);
 app.use("/api/disfraces", disfracesRouter);
+app.use("/api/pagos/cotizar", limitadorCotizar);
 app.use("/api/pagos", pagosRouter);
 
 const PORT = process.env.PORT || 3000;

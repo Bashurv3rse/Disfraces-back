@@ -1,21 +1,36 @@
 import { prisma } from "../../config/prisma";
 import { CrearAlquilerInput } from "./alquileres.schema";
+import { cotizar } from "../pagos/precios.service";
 
 const NOMBRE_DIA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const NOMBRE_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-function calcularDias(fechaInicio: string, fechaFin: string): number {
-  const msPorDia = 1000 * 60 * 60 * 24;
-  const inicio = new Date(fechaInicio);
-  const fin = new Date(fechaFin);
-  return Math.max(1, Math.round((fin.getTime() - inicio.getTime()) / msPorDia));
+export interface PreciosAlquiler {
+  montoTotal: number; // total del alquiler YA con el descuento aplicado
+  montoGarantia: number; // 25% de montoTotal
+  descuento: number;
+  detalleDescuento: string | null;
 }
 
-export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string, stripeSessionId?: string) {
-  const disfraces = await prisma.disfrazFisico.findMany({ where: { id: { in: datos.disfraces } } });
-  const dias = calcularDias(datos.fechaInicio, datos.fechaFin);
-  const montoTotal = disfraces.reduce((s: number, d: { precioAlquiler: unknown }) => s + Number(d.precioAlquiler), 0) * dias;
-  const montoGarantia = Math.round(montoTotal * 0.25 * 100) / 100;
+// Si se pasan `precios` (flujo de pago), se guardan tal cual: son los que el cliente pagó.
+// Si no (alquiler creado por un administrador), se calculan con las ofertas automáticas.
+export async function crearAlquiler(
+  datos: CrearAlquilerInput,
+  usuarioId: string,
+  opciones: { stripeSessionId?: string; precios?: PreciosAlquiler } = {}
+) {
+  const cotizacion = await cotizar({
+    disfraces: datos.disfraces,
+    fechaInicio: datos.fechaInicio,
+    fechaFin: datos.fechaFin,
+  });
+
+  const precios: PreciosAlquiler = opciones.precios ?? {
+    montoTotal: cotizacion.totalAlquiler,
+    montoGarantia: cotizacion.garantia,
+    descuento: cotizacion.descuento,
+    detalleDescuento: cotizacion.detalleDescuento,
+  };
 
   return prisma.alquiler.create({
     data: {
@@ -24,20 +39,19 @@ export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string
       fechaFin: new Date(datos.fechaFin),
       evento: datos.evento,
       estado: "ACTIVO",
-      montoTotal,
-      montoGarantia,
-      stripeSessionId,
+      montoTotal: precios.montoTotal,
+      montoGarantia: precios.montoGarantia,
+      descuento: precios.descuento,
+      detalleDescuento: precios.detalleDescuento,
+      stripeSessionId: opciones.stripeSessionId,
       disfraces: {
-        create: disfraces.map((d: { id: string; precioAlquiler: unknown }) => ({
-          disfrazFisicoId: d.id,
-          precioUnitario: d.precioAlquiler as any,
-        })),
+        // precioUnitario sigue siendo el precio POR DÍA de lista; el descuento va a nivel de alquiler.
+        create: cotizacion.lineas.map((l) => ({ disfrazFisicoId: l.disfrazId, precioUnitario: l.precioDia })),
       },
     },
     include: { disfraces: { include: { disfrazFisico: true } } },
   });
 }
-
 export function listarPropios(usuarioId: string) {
   return prisma.alquiler.findMany({
     where: { usuarioId },

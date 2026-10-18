@@ -178,6 +178,8 @@ model Alquiler {
   evento          String?
   estado          EstadoAlquiler @default(ACTIVO)
   montoTotal      Decimal        @db.Decimal(10, 2)
+  descuento        Decimal  @default(0) @db.Decimal(10, 2)
+  detalleDescuento String?
   montoGarantia   Decimal        @default(0) @db.Decimal(10, 2)
   stripeSessionId String?        @unique
   creadoEn        DateTime       @default(now())
@@ -284,4 +286,20 @@ model SesionActiva {
   expiraEn  DateTime
 
   usuario Usuario @relation(fields: [usuarioId], references: [id])
+}
+
+model Promocion {
+  id              String    @id @default(uuid())
+  nombre          String
+  descripcion     String
+  porcentaje      Int
+  codigo          String?   @unique
+  minDias         Int?
+  diasSemana      Int[]     @default([])
+  tipoDisfraz     String?
+  temporadaEvento String?
+  vigenteDesde    DateTime?
+  vigenteHasta    DateTime?
+  activa          Boolean   @default(true)
+  creadoEn        DateTime  @default(now())
 }

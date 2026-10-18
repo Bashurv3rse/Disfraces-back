@@ -8,7 +8,9 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "probar:cotizacion": "ts-node --project tsconfig.scripts.json scripts/probar-cotizacion.ts",
+    "prisma:promociones": "ts-node prisma/sembrar-promociones.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",

@@ -1,31 +1,86 @@
 import { prisma } from "../../config/prisma";
 import { CrearDisfrazInput } from "./disfraces.schema";
+import { randomUUID } from "crypto";
+
+// Error de regla de negocio, con el código HTTP que debe devolver el controller.
+export class ErrorDisfraz extends Error {
+  constructor(mensaje: string, public readonly estado: number) {
+    super(mensaje);
+  }
+}
+
+function aSlug(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 export async function crearDisfraz(datos: CrearDisfrazInput) {
-  const disfraz = await prisma.disfrazFisico.create({
-    data: {
-      nombre: datos.nombre,
-      familia: datos.familia,
-      grupoCompatibilidad: datos.grupoCompatibilidad,
-      tipoDisfraz: datos.tipoDisfraz,
-      temporadaEvento: datos.temporadaEvento,
-      precioAlquiler: datos.precioAlquiler,
-      imagenUrl: datos.imagenUrl,
-    },
+  const nombreRepetido = await prisma.disfrazFisico.findFirst({
+    where: { nombre: { equals: datos.nombre, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (nombreRepetido) {
+    throw new ErrorDisfraz(`Ya existe un disfraz llamado "${datos.nombre}".`, 409);
+  }
+
+  // Familia: la indicada, o el nombre sin el sufijo "#N".
+  const familiaSolicitada = datos.familia ?? (datos.nombre.replace(/\s*#\d+\s*$/, "").trim() || datos.nombre);
+
+  // Si la familia ya existe, el nuevo disfraz respeta su escritura y su grupo.
+  const hermano = await prisma.disfrazFisico.findFirst({
+    where: { familia: { equals: familiaSolicitada, mode: "insensitive" } },
+    select: { familia: true, grupoCompatibilidad: true },
   });
 
-  await prisma.prenda.createMany({
-    data: datos.prendas.map((p) => ({
-      nombre: p.nombre,
-      tipo: p.tipo as any,
-      color: p.color,
-      talla: p.talla,
-      disfrazHogarId: disfraz.id,
-      disfrazActualId: disfraz.id,
-    })),
-  });
+  if (
+    hermano?.grupoCompatibilidad &&
+    datos.grupoCompatibilidad &&
+    hermano.grupoCompatibilidad !== datos.grupoCompatibilidad
+  ) {
+    throw new ErrorDisfraz(
+      `La familia "${hermano.familia}" ya pertenece al grupo "${hermano.grupoCompatibilidad}"; no puede crearse en otro grupo.`,
+      409
+    );
+  }
 
-  return obtenerDisfrazConEstado(disfraz.id);
+  const familia = hermano?.familia ?? familiaSolicitada;
+  const grupo =
+    datos.grupoCompatibilidad ??
+    hermano?.grupoCompatibilidad ??
+    (aSlug(familia) || `grupo-${randomUUID().slice(0, 8)}`);
+
+  // Disfraz y prendas en una sola transacción: o se crea todo, o no se crea nada.
+  const id = randomUUID();
+  await prisma.$transaction([
+    prisma.disfrazFisico.create({
+      data: {
+        id,
+        nombre: datos.nombre,
+        familia,
+        grupoCompatibilidad: grupo,
+        tipoDisfraz: datos.tipoDisfraz,
+        temporadaEvento: datos.temporadaEvento,
+        precioAlquiler: datos.precioAlquiler,
+        imagenUrl: datos.imagenUrl,
+      },
+    }),
+    prisma.prenda.createMany({
+      data: datos.prendas.map((p) => ({
+        nombre: p.nombre,
+        tipo: p.tipo as any,
+        color: p.color,
+        talla: p.talla,
+        disfrazHogarId: id,
+        disfrazActualId: id,
+      })),
+    }),
+  ]);
+
+  return obtenerDisfrazConEstado(id);
 }
 
 interface FiltrosDisfraz {
@@ -191,6 +246,22 @@ export async function obtenerDisfrazConEstado(id: string) {
     completo: contarFaltantes(d) === 0,
     prestamosSalientes: contarPrestamosSalientes(d),
   };
+}
+
+// Disfraces de una lista que NO se pueden alquilar ahora (alquilados, incompletos, en lavado
+// o en reparación). Es la misma regla que muestra el catálogo, pero comprobada en el servidor.
+export async function disfracesNoDisponibles(ids: string[]) {
+  await limpiarSuspensionesVencidas();
+
+  const disfraces = await prisma.disfrazFisico.findMany({
+    where: { id: { in: ids } },
+    include: { prendasHogar: true, prendasActuales: true },
+  });
+  const alquilados = await obtenerAlquiladosAhoraIds();
+
+  return disfraces
+    .map((d: any) => ({ id: d.id as string, nombre: d.nombre as string, estado: calcularEstado(d, alquilados).estado }))
+    .filter((d: { estado: string }) => d.estado !== "DISPONIBLE");
 }
 
 // --- Detalle de inventario (solo admin): qué prenda reemplaza a cuál ---
