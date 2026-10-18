@@ -1,6 +1,7 @@
 import { prisma } from "../../config/prisma";
 import { CrearDisfrazInput } from "./disfraces.schema";
 import { randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
 
 // Error de regla de negocio, con el código HTTP que debe devolver el controller.
 export class ErrorDisfraz extends Error {
@@ -205,6 +206,7 @@ export async function listarDisfraces(filtros: FiltrosDisfraz) {
 
   const disfraces = await prisma.disfrazFisico.findMany({
     where: {
+      origen: "CATALOGO",
       ...(filtros.nombre && { nombre: { contains: filtros.nombre, mode: "insensitive" } }),
       ...(filtros.temporadas?.length && { temporadaEvento: { in: filtros.temporadas, mode: "insensitive" } }),
       ...(filtros.tipos?.length && { tipoDisfraz: { in: filtros.tipos, mode: "insensitive" } }),
@@ -397,12 +399,20 @@ export async function obtenerDetalleInventario(id: string) {
 }
 
 export async function obtenerTemporadasDisponibles() {
-  const filas = await prisma.disfrazFisico.findMany({ select: { temporadaEvento: true }, distinct: ["temporadaEvento"] });
+  const filas = await prisma.disfrazFisico.findMany({
+    where: { origen: "CATALOGO" },
+    select: { temporadaEvento: true },
+    distinct: ["temporadaEvento"],
+  });
   return filas.map((f: { temporadaEvento: string }) => f.temporadaEvento);
 }
 
 export async function obtenerTiposDisponibles() {
-  const filas = await prisma.disfrazFisico.findMany({ select: { tipoDisfraz: true }, distinct: ["tipoDisfraz"] });
+  const filas = await prisma.disfrazFisico.findMany({
+    where: { origen: "CATALOGO" },
+    select: { tipoDisfraz: true },
+    distinct: ["tipoDisfraz"],
+  });
   return filas.map((f: { tipoDisfraz: string }) => f.tipoDisfraz);
 }
 
@@ -435,19 +445,22 @@ export interface CandidatoReemplazo {
   disfrazOrigenId: string;
   disfrazOrigenNombre: string;
   disfrazOrigenAlquilado: boolean;
+  esAlmacen: boolean;
   mismaFamilia: boolean;
   mismaTalla: boolean;
   mismoColor: boolean;
 }
 
 // Candidatos para reemplazar una prenda. Reglas:
-//  - mismo tipo de prenda, disponible y "en su casa" (no prestada ya a otro disfraz);
-//  - su disfraz de origen debe pertenecer al MISMO grupo de compatibilidad que el
-//    disfraz que la necesita (un disfraz sin grupo no intercambia piezas con nadie);
+//  - mismo tipo de prenda, disponible y «en su casa» (no prestada ya a otro disfraz);
+//  - vienen de DOS fuentes: (1) repuestos del almacén con el MISMO NOMBRE que la prenda a
+//    reponer, y (2) piezas de disfraces del mismo grupo de compatibilidad;
 //  - su disfraz de origen NO puede estar en ciclo de lavado;
-//  - orden: disfraces no alquilados primero, luego misma familia, misma talla, mismo color.
-// "Disfraz que la necesita": por defecto el de origen de la prenda; en una devolución
-// se indica explícitamente el disfraz donde la prenda estaba en uso.
+//  - orden: no alquilados primero y, entre ellos, por encaje: almacén 4 + misma familia 4
+//    + misma talla 2 + mismo color 1. Con empate gana el almacén, porque no deja
+//    incompleto a ningún otro disfraz.
+// Solo los disfraces del catálogo reciben reemplazos. «Disfraz que la necesita»: por defecto
+// el de origen de la prenda; en una devolución se indica el disfraz donde estaba en uso.
 export async function buscarCandidatos(prendaId: string, disfrazNecesitadoId?: string): Promise<CandidatoReemplazo[]> {
   // Libera primero los lavados ya terminados, para que no bloqueen candidatos de más.
   await limpiarSuspensionesVencidas();
@@ -460,8 +473,15 @@ export async function buscarCandidatos(prendaId: string, disfrazNecesitadoId?: s
   });
   if (!necesitado) throw new Error("Disfraz no encontrado");
 
-  const grupo = necesitado.grupoCompatibilidad;
-  if (!grupo) return [];
+  // El almacén y los disfraces a medida no reciben reemplazos.
+  if (necesitado.origen !== "CATALOGO") return [];
+
+  const origenes: Prisma.PrendaWhereInput[] = [
+    { nombre: { equals: prenda.nombre, mode: "insensitive" }, disfrazHogar: { origen: "ALMACEN" } },
+  ];
+  if (necesitado.grupoCompatibilidad) {
+    origenes.push({ disfrazHogar: { origen: "CATALOGO", grupoCompatibilidad: necesitado.grupoCompatibilidad } });
+  }
 
   const candidatas = await prisma.prenda.findMany({
     where: {
@@ -469,7 +489,7 @@ export async function buscarCandidatos(prendaId: string, disfrazNecesitadoId?: s
       estado: "DISPONIBLE",
       id: { not: prendaId },
       disfrazHogarId: { not: necesitado.id },
-      disfrazHogar: { grupoCompatibilidad: grupo },
+      OR: origenes,
     },
     include: { disfrazHogar: true },
   });
@@ -488,15 +508,20 @@ export async function buscarCandidatos(prendaId: string, disfrazNecesitadoId?: s
     disfrazOrigenId: p.disfrazHogarId,
     disfrazOrigenNombre: p.disfrazHogar.nombre,
     disfrazOrigenAlquilado: alquiladosAhora.has(p.disfrazHogarId),
+    esAlmacen: p.disfrazHogar.origen === "ALMACEN",
     mismaFamilia: !!necesitado.familia && p.disfrazHogar.familia === necesitado.familia,
     mismaTalla: p.talla === prenda.talla,
     mismoColor: p.color === prenda.color,
   }));
 
-  const puntaje = (c: CandidatoReemplazo) => (c.mismaFamilia ? 4 : 0) + (c.mismaTalla ? 2 : 0) + (c.mismoColor ? 1 : 0);
+  const puntaje = (c: CandidatoReemplazo) =>
+    (c.esAlmacen ? 4 : 0) + (c.mismaFamilia ? 4 : 0) + (c.mismaTalla ? 2 : 0) + (c.mismoColor ? 1 : 0);
 
   return candidatos.sort(
-    (a, b) => Number(a.disfrazOrigenAlquilado) - Number(b.disfrazOrigenAlquilado) || puntaje(b) - puntaje(a)
+    (a, b) =>
+      Number(a.disfrazOrigenAlquilado) - Number(b.disfrazOrigenAlquilado) ||
+      puntaje(b) - puntaje(a) ||
+      Number(b.esAlmacen) - Number(a.esAlmacen)
   );
 }
 

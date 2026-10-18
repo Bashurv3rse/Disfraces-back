@@ -28,6 +28,10 @@ model Usuario {
   
   sesiones SesionActiva[]
   alquileres     Alquiler[]
+  tallaRopa    String?
+  tallaCalzado String?
+  reservas     Reserva[]
+  peticiones   PeticionDisfraz[]
   notificaciones Notificacion[]
 }
 
@@ -64,13 +68,16 @@ model DisfrazFisico {
   estadoManual        EstadoManualDisfraz?
   fechaSuspension     DateTime?
   imagenUrl           String?
+  origen              OrigenDisfraz        @default(CATALOGO)
   creadoEn            DateTime             @default(now())
 
   prendasHogar    Prenda[]          @relation("PrendaHogar")
   prendasActuales Prenda[]          @relation("PrendaActual")
   alquileres      AlquilerDisfraz[]
+  reservas        Reserva[]
 
   @@index([grupoCompatibilidad])
+  @@index([origen])
 }
 
 model Prenda {
@@ -90,6 +97,7 @@ model Prenda {
 
   proveedores         PrendaProveedor[]
   devolucionItems     DevolucionPrenda[]
+  movimientos MovimientoPrenda[]
   sustitucionesSalida Sustitucion[]
 
   @@index([disfrazHogarId])
@@ -302,4 +310,97 @@ model Promocion {
   vigenteHasta    DateTime?
   activa          Boolean   @default(true)
   creadoEn        DateTime  @default(now())
+}
+
+enum OrigenDisfraz {
+  CATALOGO
+  ALMACEN
+  A_MEDIDA
+}
+
+enum TipoReserva {
+  A_MEDIDA
+  AJUSTE_TALLA
+}
+
+model Receta {
+  id            String   @id @default(uuid())
+  nombre        String   @unique
+  descripcion   String?
+  palabrasClave String[] @default([])
+  precioDia     Decimal  @db.Decimal(10, 2)
+  activa        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+
+  piezas     RecetaPieza[]
+  reservas   Reserva[]
+  peticiones PeticionDisfraz[]
+}
+
+model RecetaPieza {
+  id             String     @id @default(uuid())
+  recetaId       String
+  etiqueta       String
+  tipo           TipoPrenda
+  colores        String[]   @default([])
+  nombreContiene String?
+  obligatoria    Boolean    @default(true)
+
+  receta Receta @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+
+  @@index([recetaId])
+}
+
+model Reserva {
+  id              String      @id @default(uuid())
+  tipo            TipoReserva
+  usuarioId       String
+  disfrazFisicoId String
+  recetaId        String?
+  peticion        String?
+  tallaRopa       String?
+  tallaCalzado    String?
+  vence           DateTime
+  confirmadaEn    DateTime?
+  liberadaEn      DateTime?
+  creadoEn        DateTime    @default(now())
+
+  usuario       Usuario            @relation(fields: [usuarioId], references: [id])
+  disfrazFisico DisfrazFisico      @relation(fields: [disfrazFisicoId], references: [id])
+  receta        Receta?            @relation(fields: [recetaId], references: [id])
+  movimientos   MovimientoPrenda[]
+
+  @@index([disfrazFisicoId])
+  @@index([usuarioId])
+}
+
+model MovimientoPrenda {
+  id        String   @id @default(uuid())
+  reservaId String
+  prendaId  String
+  desdeId   String
+  haciaId   String
+  orden     Int
+  creadoEn  DateTime @default(now())
+
+  reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+  prenda  Prenda  @relation(fields: [prendaId], references: [id])
+
+  @@index([reservaId])
+  @@index([prendaId])
+}
+
+model PeticionDisfraz {
+  id               String   @id @default(uuid())
+  usuarioId        String
+  texto            String
+  textoNormalizado String
+  recetaId         String?
+  atendida         Boolean  @default(false)
+  creadoEn         DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  receta  Receta? @relation(fields: [recetaId], references: [id])
+
+  @@index([textoNormalizado])
 }

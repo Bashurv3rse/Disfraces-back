@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { sembrarPromociones } from "./promociones";
+import { sembrarAlmacenYRecetas } from "./almacen-recetas";
 
 const prisma = new PrismaClient();
 
@@ -339,10 +340,14 @@ async function main() {
   await prisma.devolucion.deleteMany();
   await prisma.alquilerDisfraz.deleteMany();
   await prisma.alquiler.deleteMany();
+  await prisma.movimientoPrenda.deleteMany();
+  await prisma.reserva.deleteMany();
+  await prisma.peticionDisfraz.deleteMany();
   await prisma.prendaProveedor.deleteMany();
   await prisma.ordenReabastecimiento.deleteMany();
   await prisma.prenda.deleteMany();
   await prisma.disfrazFisico.deleteMany();
+  await prisma.receta.deleteMany();
 
   console.log("Creando 3 instancias por cada familia…");
   let totalDisfraces = 0;
@@ -394,6 +399,7 @@ async function main() {
   const superman1 = idsCreados.find((d) => d.nombre === "Superman #1")!;
   await prisma.disfrazFisico.update({ where: { id: superman1.id }, data: { estadoManual: "EN_REPARACION" } });
   await sembrarPromociones(prisma);
+  await sembrarAlmacenYRecetas(prisma);
   console.log(`Listo: ${totalDisfraces} disfraces físicos y ${totalPrendas} prendas creadas.`);
 }
 

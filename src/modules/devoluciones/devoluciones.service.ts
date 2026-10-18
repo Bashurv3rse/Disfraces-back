@@ -6,7 +6,8 @@ import { buscarCandidatos } from "../disfraces/disfraces.service";
 // administrador: solo prendas de disfraces del mismo grupo de compatibilidad.
 async function buscarDonante(prendaId: string, disfrazNecesitadoId: string) {
   const candidatos = await buscarCandidatos(prendaId, disfrazNecesitadoId);
-  return candidatos.find((c) => !c.disfrazOrigenAlquilado) || null;
+  // Del almacén solo se toma un repuesto de la misma talla; de otros disfraces, como antes.
+  return candidatos.find((c) => !c.disfrazOrigenAlquilado && (!c.esAlmacen || c.mismaTalla)) || null;
 }
 
 export async function crearDevolucion(datos: CrearDevolucionInput, usuarioId: string) {

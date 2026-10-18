@@ -98,7 +98,7 @@ export async function resumenAdmin() {
     prisma.alquilerDisfraz.findMany({ select: { disfrazFisico: { select: { tipoDisfraz: true } } } }),
     prisma.alquiler.findMany({ where: { creadoEn: { gte: hace7Dias } }, select: { creadoEn: true } }),
     prisma.devolucion.count({ where: { estado: "PENDIENTE" } }),
-    prisma.disfrazFisico.findMany({ include: { prendasHogar: true } }),
+    prisma.disfrazFisico.findMany({ where: { origen: "CATALOGO" }, include: { prendasHogar: true } }),
   ]);
 
   const ingresosMes = alquileresDelMes.reduce((s: number, a: { montoTotal: unknown }) => s + Number(a.montoTotal), 0);

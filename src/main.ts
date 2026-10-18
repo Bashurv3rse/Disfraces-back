@@ -82,6 +82,8 @@ import { alquileresRouter } from "./modules/alquileres/alquileres.routes";
 import { devolucionesRouter } from "./modules/devoluciones/devoluciones.routes";
 import { disfracesRouter } from "./modules/disfraces/disfraces.routes";
 import { pagosRouter } from "./modules/pagos/pagos.routes";
+import { almacenRouter } from "./modules/almacen/almacen.routes";
+import { recetasRouter } from "./modules/recetas/recetas.routes";
 
 // Rate limiting específico de autenticación
 app.use("/api/auth/login", limitadorLogin);
@@ -96,6 +98,8 @@ app.use("/api/devoluciones", devolucionesRouter);
 app.use("/api/disfraces", disfracesRouter);
 app.use("/api/pagos/cotizar", limitadorCotizar);
 app.use("/api/pagos", pagosRouter);
+app.use("/api/almacen", almacenRouter);
+app.use("/api/recetas", recetasRouter);
 
 const PORT = process.env.PORT || 3000;
 
