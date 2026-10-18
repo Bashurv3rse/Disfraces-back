@@ -1,5 +1,11 @@
 import { Request, Response } from "express";
-import { registroSchema, loginSchema, actualizarRolSchema } from "./auth.schema";
+import {
+  registroSchema,
+  loginSchema,
+  actualizarRolSchema,
+  actualizarPerfilSchema,
+  cambiarPasswordSchema,
+} from "./auth.schema";
 import {
   registrarUsuario,
   iniciarSesion,
@@ -8,6 +14,9 @@ import {
   listarUsuarios,
   actualizarRolUsuario,
   obtenerPerfilUsuario,
+  actualizarPerfil,
+  cambiarPassword,
+  ErrorNegocio,
 } from "./auth.service";
 import { registrarEventoSeguridad } from "../../common/logger";
 
@@ -120,17 +129,43 @@ export async function listarUsuariosController(_req: Request, res: Response) {
   return res.json(usuarios);
 }
 
-export async function actualizarRolController(req: Request, res: Response) {
+export async function actualizarRolController(
+  req: Request,
+  res: Response
+) {
   const parseo = actualizarRolSchema.safeParse(req.body);
+
   if (!parseo.success) {
-    return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
+    return res.status(400).json({
+      errores: parseo.error.flatten().fieldErrors,
+    });
   }
 
   try {
-    const usuario = await actualizarRolUsuario(req.params.id, parseo.data.rol);
+    const usuario = await actualizarRolUsuario(
+      req.usuario!.id,
+      req.params.id,
+      parseo.data.rol
+    );
+
+    registrarEventoSeguridad({
+      evento: "ROL_CAMBIADO",
+      usuarioId: req.usuario!.id,
+      ip: req.ip,
+      detalle: `usuario ${req.params.id} → ${parseo.data.rol}`,
+    });
+
     return res.json(usuario);
-  } catch (error: any) {
-    return res.status(404).json({ mensaje: error.message });
+  } catch (error) {
+    if (error instanceof ErrorNegocio) {
+      return res.status(error.estado).json({
+        mensaje: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      mensaje: "No se pudo cambiar el rol",
+    });
   }
 }
 
@@ -141,5 +176,88 @@ export async function perfil(req: Request, res: Response) {
     return res.json({ usuario });
   } catch (error: any) {
     return res.status(404).json({ mensaje: error.message });
+  }
+}
+
+export async function actualizarPerfilController(
+  req: Request,
+  res: Response
+) {
+  const parseo = actualizarPerfilSchema.safeParse(req.body);
+
+  if (!parseo.success) {
+    return res.status(400).json({
+      errores: parseo.error.flatten().fieldErrors,
+    });
+  }
+
+  try {
+    const usuario = await actualizarPerfil(
+      req.usuario!.id,
+      parseo.data
+    );
+
+    registrarEventoSeguridad({
+      evento: "PERFIL_ACTUALIZADO",
+      usuarioId: req.usuario!.id,
+      ip: req.ip,
+    });
+
+    return res.json({ usuario });
+  } catch (error: any) {
+    return res.status(400).json({
+      mensaje: error.message,
+    });
+  }
+}
+
+export async function cambiarPasswordController(
+  req: Request,
+  res: Response
+) {
+  const parseo = cambiarPasswordSchema.safeParse(req.body);
+
+  if (!parseo.success) {
+    return res.status(400).json({
+      errores: parseo.error.flatten().fieldErrors,
+    });
+  }
+
+  try {
+    const tokens = await cambiarPassword(
+      req.usuario!.id,
+      parseo.data.passwordActual,
+      parseo.data.passwordNueva
+    );
+
+    // El nuevo refresh token continúa protegido en cookie HttpOnly.
+    res.cookie(
+      "refreshToken",
+      tokens.refreshToken,
+      opcionesCookieRefresh
+    );
+
+    registrarEventoSeguridad({
+      evento: "PASSWORD_CAMBIADA",
+      usuarioId: req.usuario!.id,
+      ip: req.ip,
+    });
+
+    // El access token se devuelve al frontend para mantenerlo únicamente en memoria.
+    return res.json({
+      mensaje:
+        "Contraseña actualizada. Se cerraron tus otras sesiones.",
+      accessToken: tokens.accessToken,
+    });
+  } catch (error: any) {
+    registrarEventoSeguridad({
+      evento: "PASSWORD_CAMBIO_FALLIDO",
+      usuarioId: req.usuario!.id,
+      ip: req.ip,
+    });
+
+    return res.status(400).json({
+      mensaje: error.message,
+    });
   }
 }

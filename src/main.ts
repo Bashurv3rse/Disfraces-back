@@ -13,8 +13,15 @@ const app = express();
 app.use(helmet());
 
 // --- CORS restringido a un origen conocido, no abierto a cualquiera ---
-const origenPermitido = process.env.CORS_ORIGIN || "http://localhost:5173";
-app.use(cors({ origin: origenPermitido, credentials: true }));
+const origenPermitido =
+  process.env.CORS_ORIGIN || "http://localhost:5173";
+
+app.use(
+  cors({
+    origin: origenPermitido,
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 app.use(cookieParser());
@@ -23,7 +30,10 @@ app.use(cookieParser());
 const limitadorLogin = rateLimit({
   windowMs: 60 * 1000, // 1 minuto
   limit: 5,
-  message: { mensaje: "Demasiados intentos. Espera un minuto e inténtalo de nuevo." },
+  message: {
+    mensaje:
+      "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -31,13 +41,31 @@ const limitadorLogin = rateLimit({
 const limitadorRegistro = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   limit: 10,
-  message: { mensaje: "Demasiadas cuentas creadas desde esta IP. Intenta más tarde." },
+  message: {
+    mensaje:
+      "Demasiadas cuentas creadas desde esta IP. Intenta más tarde.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// --- Rate limiting para cambio de contraseña ---
+const limitadorPassword = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  limit: 5,
+  message: {
+    mensaje:
+      "Demasiados intentos de cambio de contraseña. Intenta más tarde.",
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "disfraces-alquiler-backend" });
+  res.json({
+    status: "ok",
+    service: "disfraces-alquiler-backend",
+  });
 });
 
 import { authRouter } from "./modules/auth/auth.routes";
@@ -47,9 +75,12 @@ import { devolucionesRouter } from "./modules/devoluciones/devoluciones.routes";
 import { disfracesRouter } from "./modules/disfraces/disfraces.routes";
 import { pagosRouter } from "./modules/pagos/pagos.routes";
 
+// Rate limiting específico de autenticación
 app.use("/api/auth/login", limitadorLogin);
 app.use("/api/auth/registro", limitadorRegistro);
+app.use("/api/auth/perfil/password", limitadorPassword);
 
+// Rutas
 app.use("/api/auth", authRouter);
 app.use("/api/proveedores", proveedoresRouter);
 app.use("/api/alquileres", alquileresRouter);
@@ -58,6 +89,7 @@ app.use("/api/disfraces", disfracesRouter);
 app.use("/api/pagos", pagosRouter);
 
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
