@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { crearAlquilerSchema } from "./alquileres.schema";
 import { crearAlquiler, listarPropios, listarTodos, resumenAdmin } from "./alquileres.service";
 import { ErrorCotizacion } from "../pagos/precios.service";
+import { validarSoloCatalogo } from "../pagos/carrito.service";
 
 export async function crear(req: Request, res: Response) {
   const parseo = crearAlquilerSchema.safeParse(req.body);
@@ -10,6 +11,7 @@ export async function crear(req: Request, res: Response) {
   }
 
   try {
+    await validarSoloCatalogo(parseo.data.disfraces);
     const alquiler = await crearAlquiler(parseo.data, req.usuario!.id);
     return res.status(201).json(alquiler);
   } catch (error) {

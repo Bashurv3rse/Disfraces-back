@@ -69,6 +69,22 @@ const limitadorCotizar = rateLimit({
   legacyHeaders: false,
 });
 
+const limitadorAMedidaConsulta = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  message: { mensaje: "Demasiadas consultas. Espera un momento." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const limitadorAMedidaReserva = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 6,
+  message: { mensaje: "Demasiados intentos de reserva. Espera un minuto." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
@@ -84,6 +100,7 @@ import { disfracesRouter } from "./modules/disfraces/disfraces.routes";
 import { pagosRouter } from "./modules/pagos/pagos.routes";
 import { almacenRouter } from "./modules/almacen/almacen.routes";
 import { recetasRouter } from "./modules/recetas/recetas.routes";
+import { aMedidaRouter } from "./modules/a-medida/a-medida.routes";
 
 // Rate limiting específico de autenticación
 app.use("/api/auth/login", limitadorLogin);
@@ -100,6 +117,9 @@ app.use("/api/pagos/cotizar", limitadorCotizar);
 app.use("/api/pagos", pagosRouter);
 app.use("/api/almacen", almacenRouter);
 app.use("/api/recetas", recetasRouter);
+app.use(["/api/a-medida/buscar", "/api/a-medida/previsualizar"], limitadorAMedidaConsulta);
+app.use("/api/a-medida/reservar", limitadorAMedidaReserva);
+app.use("/api/a-medida", aMedidaRouter);
 
 const PORT = process.env.PORT || 3000;
 

@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { categoriaTalla, normalizarTalla, ordenTalla } from "../../common/tallas";
 import type { AgregarPiezasInput, RetirarPiezasInput } from "./almacen.schema";
+import { liberarReservasVencidas } from "../a-medida/reservas.base";
 
 export class ErrorAlmacen extends Error {
   constructor(mensaje: string, public readonly estado: number = 400) {
@@ -46,6 +47,7 @@ export interface GrupoAlmacen {
 }
 
 export async function listarAlmacen() {
+  await liberarReservasVencidas();
   const resumen = { total: 0, disponibles: 0, enUso: 0, danadas: 0 };
 
   const almacen = await prisma.disfrazFisico.findFirst({ where: { origen: "ALMACEN" }, select: { id: true } });

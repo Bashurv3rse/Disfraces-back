@@ -1,6 +1,7 @@
 import { prisma } from "../../config/prisma";
 import { CrearAlquilerInput } from "./alquileres.schema";
 import { cotizar } from "../pagos/precios.service";
+import { ReservaPerdida } from "../a-medida/reservas.base";
 
 const NOMBRE_DIA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const NOMBRE_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -14,10 +15,14 @@ export interface PreciosAlquiler {
 
 // Si se pasan `precios` (flujo de pago), se guardan tal cual: son los que el cliente pagó.
 // Si no (alquiler creado por un administrador), se calculan con las ofertas automáticas.
+// Si se pasan `precios` (flujo de pago), se guardan tal cual: son los que el cliente pagó.
+// Si no (alquiler creado por un administrador), se calculan con las ofertas automáticas.
+// `reservasIds`: reservas de disfraces a medida que se confirman en la MISMA transacción que
+// crea el alquiler. Si alguna ya no está activa, no se crea nada y se lanza ReservaPerdida.
 export async function crearAlquiler(
   datos: CrearAlquilerInput,
   usuarioId: string,
-  opciones: { stripeSessionId?: string; precios?: PreciosAlquiler } = {}
+  opciones: { stripeSessionId?: string; precios?: PreciosAlquiler; reservasIds?: string[] } = {}
 ) {
   const cotizacion = await cotizar({
     disfraces: datos.disfraces,
@@ -32,26 +37,44 @@ export async function crearAlquiler(
     detalleDescuento: cotizacion.detalleDescuento,
   };
 
-  return prisma.alquiler.create({
-    data: {
-      usuarioId,
-      fechaInicio: new Date(datos.fechaInicio),
-      fechaFin: new Date(datos.fechaFin),
-      evento: datos.evento,
-      estado: "ACTIVO",
-      montoTotal: precios.montoTotal,
-      montoGarantia: precios.montoGarantia,
-      descuento: precios.descuento,
-      detalleDescuento: precios.detalleDescuento,
-      stripeSessionId: opciones.stripeSessionId,
-      disfraces: {
-        // precioUnitario sigue siendo el precio POR DÍA de lista; el descuento va a nivel de alquiler.
-        create: cotizacion.lineas.map((l) => ({ disfrazFisicoId: l.disfrazId, precioUnitario: l.precioDia })),
+  return prisma.$transaction(async (tx) => {
+    for (const reservaId of opciones.reservasIds ?? []) {
+      const confirmada = await tx.reserva.updateMany({
+        where: { id: reservaId, usuarioId, liberadaEn: null, confirmadaEn: null },
+        data: { confirmadaEn: new Date() },
+      });
+      if (confirmada.count === 0) {
+        // Puede estar ya confirmada (un reintento tras un fallo): eso sí es válido.
+        const yaConfirmada = await tx.reserva.findFirst({
+          where: { id: reservaId, usuarioId, liberadaEn: null, confirmadaEn: { not: null } },
+          select: { id: true },
+        });
+        if (!yaConfirmada) throw new ReservaPerdida();
+      }
+    }
+
+    return tx.alquiler.create({
+      data: {
+        usuarioId,
+        fechaInicio: new Date(datos.fechaInicio),
+        fechaFin: new Date(datos.fechaFin),
+        evento: datos.evento,
+        estado: "ACTIVO",
+        montoTotal: precios.montoTotal,
+        montoGarantia: precios.montoGarantia,
+        descuento: precios.descuento,
+        detalleDescuento: precios.detalleDescuento,
+        stripeSessionId: opciones.stripeSessionId,
+        disfraces: {
+          // precioUnitario sigue siendo el precio POR DÍA de lista; el descuento va a nivel de alquiler.
+          create: cotizacion.lineas.map((l) => ({ disfrazFisicoId: l.disfrazId, precioUnitario: l.precioDia })),
+        },
       },
-    },
-    include: { disfraces: { include: { disfrazFisico: true } } },
+      include: { disfraces: { include: { disfrazFisico: true } } },
+    });
   });
 }
+
 export function listarPropios(usuarioId: string) {
   return prisma.alquiler.findMany({
     where: { usuarioId },

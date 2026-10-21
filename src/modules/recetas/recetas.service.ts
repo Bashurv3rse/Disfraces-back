@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { normalizar } from "../../common/texto";
 import type { RecetaInput } from "./recetas.schema";
+import { liberarReservasVencidas } from "../a-medida/reservas.base";
 
 export class ErrorReceta extends Error {
   constructor(mensaje: string, public readonly estado: number = 400) {
@@ -84,6 +85,7 @@ function traducirError(error: unknown): never {
 }
 
 export async function listarRecetas() {
+  await liberarReservasVencidas();
   const [recetas, disponibles] = await Promise.all([
     prisma.receta.findMany({ include: { piezas: true }, orderBy: { nombre: "asc" } }),
     piezasDisponiblesDelAlmacen(),
