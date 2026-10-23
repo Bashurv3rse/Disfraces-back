@@ -5,6 +5,7 @@ import {
   actualizarRolSchema,
   actualizarPerfilSchema,
   cambiarPasswordSchema,
+  actualizarTallasSchema,
 } from "./auth.schema";
 import {
   registrarUsuario,
@@ -16,6 +17,7 @@ import {
   obtenerPerfilUsuario,
   actualizarPerfil,
   cambiarPassword,
+  actualizarTallas,
   ErrorNegocio,
 } from "./auth.service";
 import { registrarEventoSeguridad } from "../../common/logger";
@@ -259,5 +261,27 @@ export async function cambiarPasswordController(
     return res.status(400).json({
       mensaje: error.message,
     });
+  }
+}
+
+export async function actualizarTallasController(req: Request, res: Response) {
+  const parseo = actualizarTallasSchema.safeParse(req.body);
+
+  if (!parseo.success) {
+    return res.status(400).json({ errores: parseo.error.flatten().fieldErrors });
+  }
+
+  try {
+    const usuario = await actualizarTallas(req.usuario!.id, parseo.data);
+
+    registrarEventoSeguridad({
+      evento: "TALLAS_ACTUALIZADAS",
+      usuarioId: req.usuario!.id,
+      ip: req.ip,
+    });
+
+    return res.json({ usuario });
+  } catch (error: any) {
+    return res.status(400).json({ mensaje: error.message });
   }
 }

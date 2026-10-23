@@ -7,6 +7,7 @@ import {
   RegistroInput,
   LoginInput,
   ActualizarPerfilInput,
+  ActualizarTallasInput,
 } from "./auth.schema";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
@@ -32,6 +33,8 @@ const CAMPOS_PERFIL = {
   direccion: true,
   rol: true,
   creadoEn: true,
+  tallaRopa: true,
+  tallaCalzado: true,
 } as const;
 
 function calcularExpiracion(duracion: string): Date {
@@ -267,6 +270,22 @@ export async function actualizarPerfil(
       nombre: datos.nombre,
       telefono: datos.telefono,
       direccion: datos.direccion,
+    },
+    select: CAMPOS_PERFIL,
+  });
+}
+
+export async function actualizarTallas(id: string, datos: ActualizarTallasInput) {
+  const usuario = await prisma.usuario.findUnique({ where: { id }, select: { id: true } });
+  if (!usuario) {
+    throw new Error("Usuario no encontrado");
+  }
+
+  return prisma.usuario.update({
+    where: { id },
+    data: {
+      ...(datos.tallaRopa !== undefined && { tallaRopa: datos.tallaRopa || null }),
+      ...(datos.tallaCalzado !== undefined && { tallaCalzado: datos.tallaCalzado || null }),
     },
     select: CAMPOS_PERFIL,
   });

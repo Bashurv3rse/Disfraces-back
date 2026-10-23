@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { crearDevolucionSchema } from "./devoluciones.schema";
-import { crearDevolucion, listarDevoluciones } from "./devoluciones.service";
+import { crearDevolucion, listarDevoluciones, ErrorDevolucion } from "./devoluciones.service";
 
 export async function crear(req: Request, res: Response) {
   const parseo = crearDevolucionSchema.safeParse(req.body);
@@ -8,8 +8,10 @@ export async function crear(req: Request, res: Response) {
   try {
     const resultado = await crearDevolucion(parseo.data, req.usuario!.id);
     return res.status(201).json(resultado);
-  } catch (error: any) {
-    return res.status(404).json({ mensaje: error.message });
+  } catch (error) {
+    if (error instanceof ErrorDevolucion) return res.status(error.estado).json({ mensaje: error.message });
+    console.error(error);
+    return res.status(500).json({ mensaje: "No se pudo registrar la devolución. Intenta de nuevo." });
   }
 }
 

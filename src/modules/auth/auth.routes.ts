@@ -9,6 +9,7 @@ import {
   cambiarPasswordController,
   listarUsuariosController,
   actualizarRolController,
+  actualizarTallasController,
 } from "./auth.controller";
 
 import {
@@ -35,6 +36,12 @@ authRouter.patch(
   "/perfil",
   verificarToken,
   actualizarPerfilController
+);
+
+authRouter.patch(
+  "/perfil/tallas", 
+  verificarToken, 
+  actualizarTallasController
 );
 
 authRouter.patch(

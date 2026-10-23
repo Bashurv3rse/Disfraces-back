@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TALLAS_ROPA, TALLAS_CALZADO } from "../../common/tallas";
 
 const passwordRobusta = z
   .string()
@@ -68,3 +69,23 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type ActualizarRolInput = z.infer<typeof actualizarRolSchema>;
 export type ActualizarPerfilInput = z.infer<typeof actualizarPerfilSchema>;
 export type CambiarPasswordInput = z.infer<typeof cambiarPasswordSchema>;
+
+// Cada talla es opcional: si no viene, no se toca; si viene vacía o null, se borra la guardada.
+export const actualizarTallasSchema = z.object({
+  tallaRopa: z
+    .string()
+    .trim()
+    .transform((v) => v.toUpperCase())
+    .refine((v) => v === "" || TALLAS_ROPA.includes(v), `La talla de ropa debe ser una de: ${TALLAS_ROPA.join(", ")}.`)
+    .nullish(),
+  tallaCalzado: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === "" || TALLAS_CALZADO.includes(v),
+      `La talla de calzado debe estar entre ${TALLAS_CALZADO[0]} y ${TALLAS_CALZADO[TALLAS_CALZADO.length - 1]}.`
+    )
+    .nullish(),
+});
+
+export type ActualizarTallasInput = z.infer<typeof actualizarTallasSchema>;

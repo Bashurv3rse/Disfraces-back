@@ -101,6 +101,7 @@ import { pagosRouter } from "./modules/pagos/pagos.routes";
 import { almacenRouter } from "./modules/almacen/almacen.routes";
 import { recetasRouter } from "./modules/recetas/recetas.routes";
 import { aMedidaRouter } from "./modules/a-medida/a-medida.routes";
+import { ajusteTallaRouter } from "./modules/ajuste-talla/ajuste.routes";
 
 // Rate limiting específico de autenticación
 app.use("/api/auth/login", limitadorLogin);
@@ -120,6 +121,8 @@ app.use("/api/recetas", recetasRouter);
 app.use(["/api/a-medida/buscar", "/api/a-medida/previsualizar"], limitadorAMedidaConsulta);
 app.use("/api/a-medida/reservar", limitadorAMedidaReserva);
 app.use("/api/a-medida", aMedidaRouter);
+app.use("/api/ajuste-talla/reservar", limitadorAMedidaReserva);
+app.use("/api/ajuste-talla", limitadorAMedidaConsulta, ajusteTallaRouter);
 
 const PORT = process.env.PORT || 3000;
 

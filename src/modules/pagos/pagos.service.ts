@@ -18,7 +18,7 @@ const MINUTOS_SESION_CON_RESERVA = 31;
 
 const TEXTO_ESTADO: Record<string, string> = {
   ALQUILADO: "está alquilado",
-  RESERVADO: "está reservado por otra persona",
+  RESERVADO: "está reservado en este momento",
   INCOMPLETO: "está incompleto",
   SUSPENDIDO: "está en lavado",
   EN_REPARACION: "está en reparación",
@@ -149,7 +149,7 @@ async function reembolsarPorReservaPerdida(
 
   throw new Error(
     reembolsado
-      ? "Tu pago fue reembolsado completo porque el disfraz a medida que habías apartado ya no estaba reservado (se acabó el tiempo de la reserva). El reembolso puede tardar unos días en verse en tu tarjeta. Puedes armar el disfraz de nuevo cuando quieras."
+      ? "Tu pago fue reembolsado completo porque la reserva de tu disfraz (a medida o con tallas ajustadas) ya no estaba activa: se acabó el tiempo. El reembolso puede tardar unos días en verse en tu tarjeta. Puedes volver a reservarlo cuando quieras."
       : `No pudimos completar tu alquiler y tampoco logramos reembolsar el pago de forma automática. Contacta a la tienda indicando este código de pago: ${session.id}.`
   );
 }

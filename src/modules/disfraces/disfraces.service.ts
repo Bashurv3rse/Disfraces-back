@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { CrearDisfrazInput } from "./disfraces.schema";
-import { liberarReservasVencidas, obtenerReservadosIds } from "../a-medida/reservas.base";
+import { desarmarReservasTerminadas, liberarReservasVencidas, obtenerReservadosIds } from "../a-medida/reservas.base";
 
 // Error de regla de negocio, con el código HTTP que debe devolver el controller.
 export class ErrorDisfraz extends Error {
@@ -92,7 +92,7 @@ interface FiltrosDisfraz {
 }
 
 type EstadoCalculado = "DISPONIBLE" | "INCOMPLETO" | "ALQUILADO" | "RESERVADO" | "EN_REPARACION" | "SUSPENDIDO";
-type FaseLavado = "LAVADO" | "PLANCHADO" | "EMPAQUETADO" | null;
+export type FaseLavado = "LAVADO" | "PLANCHADO" | "EMPAQUETADO" | null;
 
 // --- Días hábiles (lunes a viernes) transcurridos desde una fecha hasta hoy ---
 function diasHabilesTranscurridos(desde: Date, hasta: Date): number {
@@ -116,6 +116,24 @@ function faseLavadoPorDias(diasTranscurridos: number): FaseLavado {
   return null; // 3+ días hábiles: el ciclo terminó
 }
 
+// Días hábiles transcurridos del lavado y fase en la que va (la fase es null si ya terminó).
+export function infoLavado(fechaSuspension: Date): { dias: number; fase: FaseLavado } {
+  const dias = diasHabilesTranscurridos(fechaSuspension, new Date());
+  return { dias, fase: faseLavadoPorDias(dias) };
+}
+
+// Fecha (UTC) en que se cumple el tercer día hábil y el disfraz sale del lavado.
+export function fechaLiberacionLavado(desde: Date): Date {
+  const cursor = new Date(Date.UTC(desde.getUTCFullYear(), desde.getUTCMonth(), desde.getUTCDate()));
+  let habiles = 0;
+  while (habiles < 3) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const dia = cursor.getUTCDay();
+    if (dia !== 0 && dia !== 6) habiles++;
+  }
+  return cursor;
+}
+
 // Un disfraz está «en lavado» mientras dura su ciclo de 3 días hábiles tras una
 // devolución. Usa la misma regla que calcularEstado, así que nunca se contradicen.
 function estaEnLavado(d: { estadoManual: string | null; fechaSuspension: Date | null }): boolean {
@@ -123,9 +141,10 @@ function estaEnLavado(d: { estadoManual: string | null; fechaSuspension: Date | 
   return faseLavadoPorDias(diasHabilesTranscurridos(d.fechaSuspension, new Date())) !== null;
 }
 
-// Libera las reservas sin pagar que ya vencieron y los disfraces cuyo ciclo de lavado
-// (3 días hábiles) ya terminó, sincronizado con el reloj real y sin intervención del admin.
-async function limpiarSuspensionesVencidas() {
+// Libera las reservas sin pagar que ya vencieron, termina el lavado de los disfraces que ya
+// cumplieron sus 3 días hábiles y desarma los disfraces a medida que ya no están alquilados
+// ni en lavado. Sincronizado con el reloj real y sin intervención del admin.
+export async function limpiarSuspensionesVencidas() {
   await liberarReservasVencidas();
 
   const suspendidos = await prisma.disfrazFisico.findMany({
@@ -143,8 +162,9 @@ async function limpiarSuspensionesVencidas() {
       data: { estadoManual: null, fechaSuspension: null },
     });
   }
-}
 
+  await desarmarReservasTerminadas();
+}
 function contarFaltantes(disfraz: {
   prendasHogar: { tipo: string }[];
   prendasActuales: { tipo: string; estado: string }[];
@@ -204,6 +224,12 @@ async function obtenerAlquiladosAhoraIds(): Promise<Set<string>> {
 async function estaAlquiladoAhora(disfrazId: string): Promise<boolean> {
   const ids = await obtenerAlquiladosAhoraIds();
   return ids.has(disfrazId);
+}
+
+// Una pieza que forma parte de una reserva viva (ajuste de talla o disfraz a medida) no se puede cambiar
+// ni mover a mano: vuelve sola a su lugar cuando la reserva se deshace.
+async function estaApartada(prendaId: string): Promise<boolean> {
+  return (await prisma.movimientoPrenda.count({ where: { prendaId, reserva: { liberadaEn: null } } })) > 0;
 }
 
 export async function listarDisfraces(filtros: FiltrosDisfraz) {
@@ -317,8 +343,9 @@ interface PrendaDetalle {
   calidad: string;
   estado: string;
   situacion: SituacionPrenda;
-  prestadaA: { id: string; nombre: string } | null;
+  prestadaA: { id: string; nombre: string; aMedida: boolean } | null;
   reemplazo: ResumenPrendaAjena | null;
+  apartada: boolean;
 }
 
 // El emparejamiento prenda-reemplazo se hace por tipo, igual que contarFaltantes:
@@ -331,7 +358,7 @@ export async function obtenerDetalleInventario(id: string) {
   const d = await prisma.disfrazFisico.findUnique({
     where: { id },
     include: {
-      prendasHogar: { include: { disfrazActual: { select: { id: true, nombre: true } } } },
+      prendasHogar: { include: { disfrazActual: { select: { id: true, nombre: true, origen: true } } } },
       prendasActuales: { include: { disfrazHogar: { select: { id: true, nombre: true } } } },
     },
   });
@@ -339,6 +366,15 @@ export async function obtenerDetalleInventario(id: string) {
 
   const [alquiladosAhora, reservadosAhora] = await Promise.all([obtenerAlquiladosAhoraIds(), obtenerReservadosIds()]);
   const { estado, faseLavado } = calcularEstado(d, alquiladosAhora, reservadosAhora);
+  const idsPiezas = [...d.prendasHogar.map((p) => p.id), ...d.prendasActuales.map((p) => p.id)];
+  const apartadas = new Set(
+    (
+      await prisma.movimientoPrenda.findMany({
+        where: { prendaId: { in: idsPiezas }, reserva: { liberadaEn: null } },
+        select: { prendaId: true },
+      })
+    ).map((m) => m.prendaId)
+  );
 
   // Prendas de otros disfraces que hoy completan a este.
   const prestadasRecibidas = d.prendasActuales.filter((p) => p.disfrazHogarId !== d.id);
@@ -367,6 +403,7 @@ export async function obtenerDetalleInventario(id: string) {
       talla: p.talla,
       calidad: p.calidad,
       estado: p.estado as string,
+      apartada: apartadas.has(p.id),
     };
 
     // Prenda de este disfraz que hoy está prestada a otro.
@@ -375,19 +412,33 @@ export async function obtenerDetalleInventario(id: string) {
       return {
         ...base,
         situacion: "PRESTADA",
-        prestadaA: { id: p.disfrazActual.id, nombre: p.disfrazActual.nombre },
+        prestadaA: {
+          id: p.disfrazActual.id,
+          nombre: p.disfrazActual.nombre,
+          aMedida: p.disfrazActual.origen === "A_MEDIDA",
+        },
         reemplazo: resumen(reemplazo),
       };
     }
 
     if (p.estado === "DISPONIBLE") {
-      return { ...base, situacion: "PRESENTE", prestadaA: null, reemplazo: null };
+      return {
+        ...base,
+        situacion: "PRESENTE",
+        prestadaA: null,
+        reemplazo: null,
+      };
     }
 
     const reemplazo = tomarReemplazo(p.tipo, p.id);
+
     return {
       ...base,
-      situacion: reemplazo ? "REEMPLAZADA" : p.estado === "DANADA" ? "DANADA" : "FALTANTE",
+      situacion: reemplazo
+        ? "REEMPLAZADA"
+        : p.estado === "DANADA"
+          ? "DANADA"
+          : "FALTANTE",
       prestadaA: null,
       reemplazo: resumen(reemplazo),
     };
@@ -405,9 +456,17 @@ export async function obtenerDetalleInventario(id: string) {
     origenId: r.disfrazHogar.id,
     origenNombre: r.disfrazHogar.nombre,
     reemplazaA: reemplazaA.get(r.id) ?? null,
+
     // Sobrante: llegó en préstamo pero ya no hace falta (por ejemplo, apareció la original).
     sobrante: r.estado === "DISPONIBLE" && !usadas.has(r.id),
-    puedeDevolverse: r.estado === "DISPONIBLE" && !alquiladoEste && !alquiladosAhora.has(r.disfrazHogar.id),
+
+    apartada: apartadas.has(r.id),
+
+    puedeDevolverse:
+      r.estado === "DISPONIBLE" &&
+      !alquiladoEste &&
+      !alquiladosAhora.has(r.disfrazHogar.id) &&
+      !apartadas.has(r.id),
   }));
 
   return {
@@ -461,6 +520,10 @@ export async function actualizarPrenda(id: string, datos: { estado?: "DISPONIBLE
   const alquilados = await obtenerAlquiladosAhoraIds();
   if (alquilados.has(prenda.disfrazHogarId) || alquilados.has(prenda.disfrazActualId)) {
     throw new Error("Este disfraz está alquilado — no se puede modificar hasta que se devuelva.");
+  }
+  
+  if (await estaApartada(id)) {
+    throw new Error("Esta prenda está apartada por una reserva (ajuste de talla o disfraz a medida): vuelve sola a su lugar cuando termine.");
   }
 
   // Una pieza que está dentro de un disfraz a medida vuelve sola a su lugar al desarmarlo.
@@ -610,7 +673,11 @@ export async function devolverPrestamo(prendaId: string) {
   if (prenda.estado !== "DISPONIBLE") {
     throw new Error("Solo se puede devolver una prenda en buen estado.");
   }
-
+  
+  if (await estaApartada(prendaId)) {
+    throw new Error("Esta prenda está apartada por una reserva (ajuste de talla o disfraz a medida): vuelve sola a su lugar cuando termine.");
+  }
+  
   const [actual, hogar] = await Promise.all([
     prisma.disfrazFisico.findUnique({ where: { id: prenda.disfrazActualId } }),
     prisma.disfrazFisico.findUnique({ where: { id: prenda.disfrazHogarId } }),

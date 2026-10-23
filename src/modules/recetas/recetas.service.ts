@@ -84,6 +84,25 @@ function traducirError(error: unknown): never {
   throw error;
 }
 
+// Al crear o editar una receta, los pedidos antiguos que pedían justo eso (y habían quedado «sin
+// receta») se ligan a ella y se marcan como atendidos.
+async function vincularPeticiones(recetaId: string, palabrasClave: string[]) {
+  const claves = palabrasClave.map(normalizar).filter(Boolean);
+  if (claves.length === 0) return 0;
+
+  const pendientes = await prisma.peticionDisfraz.findMany({
+    where: { recetaId: null },
+    select: { id: true, textoNormalizado: true },
+  });
+  const ids = pendientes
+    .filter((p) => claves.some((k) => ` ${p.textoNormalizado} `.includes(` ${k} `)))
+    .map((p) => p.id);
+  if (ids.length === 0) return 0;
+
+  await prisma.peticionDisfraz.updateMany({ where: { id: { in: ids } }, data: { recetaId, atendida: true } });
+  return ids.length;
+}
+
 export async function listarRecetas() {
   await liberarReservasVencidas();
   const [recetas, disponibles] = await Promise.all([
@@ -122,7 +141,8 @@ export async function crearReceta(datos: RecetaInput) {
         piezas: { create: d.piezas },
       },
     });
-    return obtenerConStock(creada.id);
+    const vinculadas = d.activa ? await vincularPeticiones(creada.id, d.palabrasClave) : 0;
+    return { ...(await obtenerConStock(creada.id)), peticionesVinculadas: vinculadas };
   } catch (error) {
     return traducirError(error);
   }
@@ -150,7 +170,8 @@ export async function actualizarReceta(id: string, datos: RecetaInput) {
         },
       }),
     ]);
-    return obtenerConStock(id);
+    const vinculadas = d.activa ? await vincularPeticiones(id, d.palabrasClave) : 0;
+    return { ...(await obtenerConStock(id)), peticionesVinculadas: vinculadas };
   } catch (error) {
     return traducirError(error);
   }
