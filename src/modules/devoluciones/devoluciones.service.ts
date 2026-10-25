@@ -132,6 +132,7 @@ export function listarDevoluciones() {
         },
       },
       prendas: { include: { prenda: true } },
+      resueltaPor: { select: { nombre: true } },
     },
     orderBy: { creadoEn: "desc" },
   });

@@ -78,7 +78,28 @@ export async function crearAlquiler(
 export function listarPropios(usuarioId: string) {
   return prisma.alquiler.findMany({
     where: { usuarioId },
-    include: { disfraces: { include: { disfrazFisico: { include: { prendasActuales: true } } } } },
+    include: {
+      disfraces: { include: { disfrazFisico: { include: { prendasActuales: true } } } },
+      // Comprobante de la garantía: lo que el cliente puede ver de la revisión de la tienda.
+      devolucion: {
+        select: {
+          fechaDevolucion: true,
+          garantiaEstado: true,
+          garantiaMonto: true,
+          garantiaMotivo: true,
+          garantiaReembolsoId: true,
+          garantiaResueltaEn: true,
+          prendas: {
+            select: {
+              estadoPrenda: true,
+              estadoAdmin: true,
+              observacion: true,
+              prenda: { select: { id: true, nombre: true, color: true, talla: true } },
+            },
+          },
+        },
+      },
+    },
     orderBy: { creadoEn: "desc" },
   });
 }
@@ -120,7 +141,7 @@ export async function resumenAdmin() {
     prisma.alquiler.findMany({ where: { creadoEn: { gte: hace4Meses } }, select: { creadoEn: true, montoTotal: true } }),
     prisma.alquilerDisfraz.findMany({ select: { disfrazFisico: { select: { tipoDisfraz: true } } } }),
     prisma.alquiler.findMany({ where: { creadoEn: { gte: hace7Dias } }, select: { creadoEn: true } }),
-    prisma.devolucion.count({ where: { estado: "PENDIENTE" } }),
+    prisma.devolucion.count({ where: { garantiaEstado: "PENDIENTE" } }),
     prisma.disfrazFisico.findMany({ where: { origen: "CATALOGO" }, include: { prendasHogar: true } }),
   ]);
 

@@ -9,9 +9,9 @@
     "start": "node dist/main.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "probar:cotizacion": "ts-node --project tsconfig.scripts.json scripts/probar-cotizacion.ts",
-    "prisma:promociones": "ts-node prisma/sembrar-promociones.ts",
-    "prisma:almacen": "ts-node prisma/sembrar-almacen.ts"
+    "prisma:promociones": "ts-node --project prisma/tsconfig.json prisma/sembrar-promociones.ts",
+    "prisma:almacen": "ts-node --project prisma/tsconfig.json prisma/sembrar-almacen.ts",
+    "prisma:almacen-extra": "ts-node --project prisma/tsconfig.json prisma/almacen-recetas-extra.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",

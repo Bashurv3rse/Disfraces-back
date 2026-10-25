@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { sembrarPromociones } from "./promociones";
 import { sembrarAlmacenYRecetas } from "./almacen-recetas";
+import { sembrarAlmacenYRecetasExtra } from "./almacen-recetas-extra";
 
 const prisma = new PrismaClient();
 
@@ -400,6 +401,7 @@ async function main() {
   await prisma.disfrazFisico.update({ where: { id: superman1.id }, data: { estadoManual: "EN_REPARACION" } });
   await sembrarPromociones(prisma);
   await sembrarAlmacenYRecetas(prisma);
+  await sembrarAlmacenYRecetasExtra(prisma);
   console.log(`Listo: ${totalDisfraces} disfraces físicos y ${totalPrendas} prendas creadas.`);
 }
 

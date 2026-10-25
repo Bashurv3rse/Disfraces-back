@@ -33,6 +33,7 @@ model Usuario {
   reservas     Reserva[]
   peticiones   PeticionDisfraz[]
   notificaciones Notificacion[]
+  garantiasResueltas Devolucion[] @relation("GarantiaResueltaPor")
 }
 
 // ==============================
@@ -220,6 +221,12 @@ enum EstadoDevolucion {
   RECHAZADA
 }
 
+enum EstadoGarantia {
+  PENDIENTE
+  DEVUELTA
+  RETENIDA
+}
+
 enum EstadoPrendaDevuelta {
   BUEN_ESTADO
   DANADA
@@ -234,7 +241,14 @@ model Devolucion {
   penalidad       Decimal?         @db.Decimal(10, 2)
   observaciones   String?
   creadoEn        DateTime         @default(now())
+  garantiaEstado        EstadoGarantia @default(PENDIENTE)
+  garantiaMonto         Decimal?       @db.Decimal(10, 2)
+  garantiaMotivo        String?
+  garantiaReembolsoId   String?
+  garantiaResueltaEn    DateTime?
+  garantiaResueltaPorId String?
 
+  resueltaPor Usuario? @relation("GarantiaResueltaPor", fields: [garantiaResueltaPorId], references: [id])
   alquiler Alquiler           @relation(fields: [alquilerId], references: [id])
   prendas  DevolucionPrenda[]
 }
@@ -246,6 +260,7 @@ model DevolucionPrenda {
   devolucionId String
   prendaId     String
   estadoPrenda EstadoPrendaDevuelta
+  estadoAdmin  EstadoPrendaDevuelta?
   observacion  String?
 
   devolucion Devolucion @relation(fields: [devolucionId], references: [id])
