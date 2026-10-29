@@ -8,28 +8,55 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:promociones": "ts-node --project prisma/tsconfig.json prisma/sembrar-promociones.ts",
+    "prisma:almacen": "ts-node --project prisma/tsconfig.json prisma/sembrar-almacen.ts",
+    "prisma:almacen-extra": "ts-node --project prisma/tsconfig.json prisma/almacen-recetas-extra.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "dotenv -e .env.test -- vitest run --config vitest.integration.config.ts",
+    "test:integration:watch": "dotenv -e .env.test -- vitest --config vitest.integration.config.ts",
+    "test:integration:coverage": "dotenv -e .env.test -- vitest run --coverage --config vitest.integration.config.ts",
+    "db:test:deploy": "dotenv -e .env.test -- prisma migrate deploy",
+    "db:test:e2e": "dotenv -e .env.test -- ts-node --project prisma/tsconfig.json prisma/sembrar-e2e.ts",
+    "start:test": "dotenv -e .env.test -- ts-node-dev --respawn --transpile-only src/main.ts",
+    "start:test:pagos": "dotenv -e .env.test -- node -r ts-node/register tests/e2e/servidor-pagos.cjs",
+    "start:test:stripe-real": "dotenv -e .env.test -- node -r ts-node/register tests/e2e/servidor-stripe-real.cjs",
+    "test:coverage:services": "vitest run --coverage --config vitest.services.config.ts",
+    "test:coverage:logica": "vitest run --coverage --config vitest.services.config.ts --coverage.include=src/**/*.service.ts --coverage.include=src/modules/a-medida/reservas.base.ts --coverage.reportsDirectory=coverage/auditoria/logica-completa",
+    "test:bdd": "dotenv -e .env.test -- cucumber-js"
   },
   "dependencies": {
-    "express": "^4.19.2",
+    "@prisma/client": "^5.19.1",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
-    "bcryptjs": "^2.4.3",
-    "@prisma/client": "^5.19.1",
+    "stripe": "^22.6.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "typescript": "^5.5.4",
-    "ts-node-dev": "^2.0.0",
-    "@types/express": "^4.17.21",
-    "@types/node": "^22.5.0",
-    "@types/cors": "^2.8.17",
-    "@types/jsonwebtoken": "^9.0.6",
+    "@cucumber/cucumber": "^13.3.0",
     "@types/bcryptjs": "^2.4.6",
-    "prisma": "^5.19.1"
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "dotenv-cli": "^11.0.0",
+    "prisma": "^5.19.1",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.4",
+    "vitest": "^5.0.5"
   },
   "prisma": {
-  "seed": "ts-node --project prisma/tsconfig.json prisma/seed.ts"
-}
+    "seed": "ts-node --project prisma/tsconfig.json prisma/seed.ts"
+  }
 }

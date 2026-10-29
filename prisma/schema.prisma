@@ -8,7 +8,7 @@ datasource db {
 }
 
 // ==============================
-// USUARIOS Y ROLES (EP-08)
+// USUARIOS Y ROLES
 // ==============================
 enum Rol {
   CLIENTE
@@ -21,121 +21,126 @@ model Usuario {
   nombre    String
   email     String   @unique
   password  String
+  telefono  String
+  direccion String
   rol       Rol      @default(CLIENTE)
   creadoEn  DateTime @default(now())
-
+  
+  sesiones SesionActiva[]
   alquileres     Alquiler[]
-  conjuntosCreados Conjunto[] @relation("ConjuntosCreadosPorUsuario")
+  tallaRopa    String?
+  tallaCalzado String?
+  reservas     Reserva[]
+  peticiones   PeticionDisfraz[]
   notificaciones Notificacion[]
+  garantiasResueltas Devolucion[] @relation("GarantiaResueltaPor")
 }
 
 // ==============================
-// CATÁLOGO (EP-02)
+// PRENDAS FÍSICAS Y DISFRACES
 // ==============================
-enum TipoPieza {
+enum TipoPrenda {
   SOMBRERO
-  CAMISA_POLO
+  CAMISA
   PANTALON
-  ZAPATO_ZAPATILLA
+  FALDA
+  ZAPATO
   ABRIGO
   CHALECO
-  TRAJE
-  TACON
   ACCESORIO
+  PANUELO
+  TACON
 }
 
-model Pieza {
-  id            String    @id @default(uuid())
-  nombre        String
-  tipo          TipoPieza
-  tallaEEUU     String
-  color         String
-  modelo        String?
-  temporadaOriginal String // temporada/evento al que pertenece originalmente
-  stock         Int       @default(0)
-  precioAlquiler Decimal  @db.Decimal(10, 2)
-  creadoEn      DateTime  @default(now())
-  tallasDisponibles  String[]  @default([])
-  coloresDisponibles String[]  @default([])
-
-  proveedores       PiezaProveedor[]
-  conjuntos         ConjuntoPieza[]
-  alquilerItems     AlquilerPieza[]
-  devolucionItems   DevolucionPieza[]
-  ordenesReabastecimiento OrdenReabastecimiento[]
-
-  // Reglas de compatibilidad (relación reflexiva muchos-a-muchos)
-  compatibleCon     ReglaCompatibilidad[] @relation("PiezaOrigen")
-  compatibleDesde   ReglaCompatibilidad[] @relation("PiezaDestino")
+enum EstadoPrenda {
+  DISPONIBLE
+  DANADA
+  FALTANTE
 }
 
-// ==============================
-// CONJUNTOS DINÁMICOS (EP-03)
-// ==============================
-enum TipoConjunto {
-  PREDETERMINADO   // conjunto original de fábrica, por temporada
-  PERSONALIZADO    // armado por el cliente combinando piezas de distintos conjuntos
+model DisfrazFisico {
+  id                  String               @id @default(uuid())
+  nombre              String
+  familia             String?
+  grupoCompatibilidad String?
+  tipoDisfraz         String
+  temporadaEvento     String
+  precioAlquiler      Decimal              @db.Decimal(10, 2)
+  estadoManual        EstadoManualDisfraz?
+  fechaSuspension     DateTime?
+  imagenUrl           String?
+  origen              OrigenDisfraz        @default(CATALOGO)
+  creadoEn            DateTime             @default(now())
+
+  prendasHogar    Prenda[]          @relation("PrendaHogar")
+  prendasActuales Prenda[]          @relation("PrendaActual")
+  alquileres      AlquilerDisfraz[]
+  reservas        Reserva[]
+
+  @@index([grupoCompatibilidad])
+  @@index([origen])
 }
 
-model Conjunto {
+model Prenda {
   id              String       @id @default(uuid())
   nombre          String
-  tipo            TipoConjunto
-  temporadaEvento String       // temporada/evento al que aplica este conjunto
-  creadoPorId     String?      // solo aplica si tipo = PERSONALIZADO
-  creadoPor       Usuario?     @relation("ConjuntosCreadosPorUsuario", fields: [creadoPorId], references: [id])
+  tipo            TipoPrenda
+  color           String
+  talla           String
+  calidad         String       @default("bueno")
+  estado          EstadoPrenda @default(DISPONIBLE)
+  disfrazHogarId  String
+  disfrazActualId String
   creadoEn        DateTime     @default(now())
 
-  piezas          ConjuntoPieza[]
-  alquileres      Alquiler[]
+  disfrazHogar  DisfrazFisico @relation("PrendaHogar", fields: [disfrazHogarId], references: [id])
+  disfrazActual DisfrazFisico @relation("PrendaActual", fields: [disfrazActualId], references: [id])
+
+  proveedores         PrendaProveedor[]
+  devolucionItems     DevolucionPrenda[]
+  movimientos MovimientoPrenda[]
+  sustitucionesSalida Sustitucion[]
+
+  @@index([disfrazHogarId])
+  @@index([disfrazActualId])
 }
 
-// Tabla intermedia: qué piezas conforman cada conjunto
-model ConjuntoPieza {
-  id         String   @id @default(uuid())
-  conjuntoId String
-  piezaId    String
-  conjunto   Conjunto @relation(fields: [conjuntoId], references: [id])
-  pieza      Pieza    @relation(fields: [piezaId], references: [id])
+// Auditoría de préstamos automáticos entre disfraces
+model Sustitucion {
+  id               String   @id @default(uuid())
+  prendaId         String
+  disfrazOrigenId  String   // el "hogar" de la prenda, de donde se prestó
+  disfrazDestinoId String   // el disfraz que quedó completado con el préstamo
+  motivo           String   // ej. "Pañuelo dañado en Marinera #1"
+  fecha            DateTime @default(now())
 
-  @@unique([conjuntoId, piezaId])
-}
-
-// Reglas de compatibilidad definidas por el administrador (EP-03, HU "reglas de compatibilidad")
-model ReglaCompatibilidad {
-  id              String   @id @default(uuid())
-  piezaOrigenId   String
-  piezaDestinoId  String
-  eventoAplicable String   // evento/temporada donde aplica esta regla
-  piezaOrigen     Pieza    @relation("PiezaOrigen", fields: [piezaOrigenId], references: [id])
-  piezaDestino    Pieza    @relation("PiezaDestino", fields: [piezaDestinoId], references: [id])
-
-  @@unique([piezaOrigenId, piezaDestinoId, eventoAplicable])
+  prenda Prenda @relation(fields: [prendaId], references: [id])
 }
 
 // ==============================
-// PROVEEDORES (EP-04)
+// PROVEEDORES
 // ==============================
 model Proveedor {
-  id        String   @id @default(uuid())
-  nombre    String
-  contacto  String
-  telefono  String?
-  email     String?
-  creadoEn  DateTime @default(now())
+  id       String   @id @default(uuid())
+  nombre   String
+  contacto String
+  telefono String?
+  email    String?
+  creadoEn DateTime @default(now())
 
-  piezas    PiezaProveedor[]
-  ordenes   OrdenReabastecimiento[]
+  prendas PrendaProveedor[]
+  ordenes OrdenReabastecimiento[]
 }
 
-model PiezaProveedor {
+model PrendaProveedor {
   id          String    @id @default(uuid())
-  piezaId     String
+  prendaId    String
   proveedorId String
-  pieza       Pieza     @relation(fields: [piezaId], references: [id])
-  proveedor   Proveedor @relation(fields: [proveedorId], references: [id])
 
-  @@unique([piezaId, proveedorId])
+  prenda    Prenda    @relation(fields: [prendaId], references: [id])
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id])
+
+  @@unique([prendaId, proveedorId])
 }
 
 enum EstadoOrden {
@@ -145,20 +150,27 @@ enum EstadoOrden {
   CANCELADA
 }
 
+enum EstadoManualDisfraz {
+  EN_REPARACION
+  SUSPENDIDO
+}
+
+// Reabastecer ya no es "sumar stock a una pieza": es pedir prendas físicas
+// NUEVAS de un tipo — por eso referencia tipoPrenda, no una Prenda puntual.
 model OrdenReabastecimiento {
   id             String      @id @default(uuid())
-  piezaId        String
+  tipoPrenda     TipoPrenda
   proveedorId    String
   cantidad       Int
   estado         EstadoOrden @default(SOLICITADA)
   fechaSolicitud DateTime    @default(now())
   fechaEntrega   DateTime?
-  pieza          Pieza       @relation(fields: [piezaId], references: [id])
-  proveedor      Proveedor   @relation(fields: [proveedorId], references: [id])
+
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id])
 }
 
 // ==============================
-// ALQUILERES Y RESERVAS (EP-05)
+// ALQUILERES
 // ==============================
 enum EstadoAlquiler {
   PENDIENTE
@@ -168,40 +180,39 @@ enum EstadoAlquiler {
 }
 
 model Alquiler {
-  id           String         @id @default(uuid())
-  usuarioId    String
-  conjuntoId   String?        // referencia opcional al conjunto (predeterminado o personalizado) usado
-  fechaInicio  DateTime
-  fechaFin     DateTime
-  evento       String?
-  estado       EstadoAlquiler @default(PENDIENTE)
-  montoTotal   Decimal        @db.Decimal(10, 2)
-  montoGarantia Decimal @default(0) @db.Decimal(10, 2)
-  creadoEn     DateTime       @default(now())
-  tallaElegida   String?
-  colorElegido   String?
+  id              String         @id @default(uuid())
+  usuarioId       String
+  fechaInicio     DateTime
+  fechaFin        DateTime
+  evento          String?
+  estado          EstadoAlquiler @default(ACTIVO)
+  montoTotal      Decimal        @db.Decimal(10, 2)
+  descuento        Decimal  @default(0) @db.Decimal(10, 2)
+  detalleDescuento String?
+  montoGarantia   Decimal        @default(0) @db.Decimal(10, 2)
+  stripeSessionId String?        @unique
+  creadoEn        DateTime       @default(now())
 
-  usuario      Usuario        @relation(fields: [usuarioId], references: [id])
-  conjunto     Conjunto?      @relation(fields: [conjuntoId], references: [id])
-  piezas       AlquilerPieza[]
-  devolucion   Devolucion?
-  pago         Pago?
+  usuario    Usuario           @relation(fields: [usuarioId], references: [id])
+  disfraces  AlquilerDisfraz[]
+  devolucion Devolucion?
+  pago       Pago?
 }
 
-// Piezas específicas incluidas en cada alquiler (permite combinaciones ad-hoc)
-model AlquilerPieza {
-  id             String   @id @default(uuid())
-  alquilerId     String
-  piezaId        String
-  precioUnitario Decimal  @db.Decimal(10, 2)
-  tallaElegida   String?
-  colorElegido   String?
-  alquiler       Alquiler @relation(fields: [alquilerId], references: [id])
-  pieza          Pieza    @relation(fields: [piezaId], references: [id])
+// Un alquiler puede incluir varios disfraces físicos (como hoy el carrito
+// agrupa varios ítems en un solo alquiler).
+model AlquilerDisfraz {
+  id              String  @id @default(uuid())
+  alquilerId      String
+  disfrazFisicoId String
+  precioUnitario  Decimal @db.Decimal(10, 2)
+
+  alquiler      Alquiler      @relation(fields: [alquilerId], references: [id])
+  disfrazFisico DisfrazFisico @relation(fields: [disfrazFisicoId], references: [id])
 }
 
 // ==============================
-// DEVOLUCIONES (EP-06)
+// DEVOLUCIONES
 // ==============================
 enum EstadoDevolucion {
   PENDIENTE
@@ -210,44 +221,54 @@ enum EstadoDevolucion {
   RECHAZADA
 }
 
-enum EstadoProductoDevuelto {
-  BUENO
-  MALO
+enum EstadoGarantia {
+  PENDIENTE
+  DEVUELTA
+  RETENIDA
 }
 
-model Devolucion {
-  id               String           @id @default(uuid())
-  alquilerId       String           @unique
-  fechaDevolucion  DateTime
-  estado           EstadoDevolucion @default(PENDIENTE)
-  penalidad        Decimal?         @db.Decimal(10, 2)
-  observaciones    String?
-  creadoEn         DateTime         @default(now())
-  estadoProducto  EstadoProductoDevuelto?
-  
-
-  alquiler         Alquiler         @relation(fields: [alquilerId], references: [id])
-  piezas           DevolucionPieza[]
-}
-
-enum EstadoPiezaDevuelta {
+enum EstadoPrendaDevuelta {
   BUEN_ESTADO
   DANADA
   FALTANTE
 }
 
-model DevolucionPieza {
-  id             String              @id @default(uuid())
-  devolucionId   String
-  piezaId        String
-  estadoPieza    EstadoPiezaDevuelta
-  observacion    String?
-  devolucion     Devolucion          @relation(fields: [devolucionId], references: [id])
-  pieza          Pieza               @relation(fields: [piezaId], references: [id])
+model Devolucion {
+  id              String           @id @default(uuid())
+  alquilerId      String           @unique
+  fechaDevolucion DateTime
+  estado          EstadoDevolucion @default(PENDIENTE)
+  penalidad       Decimal?         @db.Decimal(10, 2)
+  observaciones   String?
+  creadoEn        DateTime         @default(now())
+  garantiaEstado        EstadoGarantia @default(PENDIENTE)
+  garantiaMonto         Decimal?       @db.Decimal(10, 2)
+  garantiaMotivo        String?
+  garantiaReembolsoId   String?
+  garantiaResueltaEn    DateTime?
+  garantiaResueltaPorId String?
+
+  resueltaPor Usuario? @relation("GarantiaResueltaPor", fields: [garantiaResueltaPorId], references: [id])
+  alquiler Alquiler           @relation(fields: [alquilerId], references: [id])
+  prendas  DevolucionPrenda[]
+}
+
+// El cliente reporta el estado prenda por prenda (no todo el disfraz de una),
+// porque es justo esa granularidad la que dispara (o no) una sustitución.
+model DevolucionPrenda {
+  id           String               @id @default(uuid())
+  devolucionId String
+  prendaId     String
+  estadoPrenda EstadoPrendaDevuelta
+  estadoAdmin  EstadoPrendaDevuelta?
+  observacion  String?
+
+  devolucion Devolucion @relation(fields: [devolucionId], references: [id])
+  prenda     Prenda     @relation(fields: [prendaId], references: [id])
 }
 
 // ==============================
-// PAGOS FICTICIOS (EP-07)
+// PAGOS FICTICIOS
 // ==============================
 enum EstadoPago {
   APROBADO
@@ -256,27 +277,145 @@ enum EstadoPago {
 }
 
 model Pago {
-  id           String     @id @default(uuid())
-  alquilerId   String     @unique
-  monto        Decimal    @db.Decimal(10, 2)
-  metodo       String     @default("TARJETA_SIMULADA")
-  estado       EstadoPago
-  comprobante  String     // código simulado del comprobante
-  creadoEn     DateTime   @default(now())
+  id          String     @id @default(uuid())
+  alquilerId  String     @unique
+  monto       Decimal    @db.Decimal(10, 2)
+  metodo      String     @default("TARJETA_SIMULADA")
+  estado      EstadoPago
+  comprobante String
+  creadoEn    DateTime   @default(now())
 
-  alquiler     Alquiler   @relation(fields: [alquilerId], references: [id])
+  alquiler Alquiler @relation(fields: [alquilerId], references: [id])
 }
 
 // ==============================
-// NOTIFICACIONES (apoyo a EP-05)
+// NOTIFICACIONES
 // ==============================
 model Notificacion {
-  id         String   @id @default(uuid())
-  usuarioId  String
-  mensaje    String
-  leido      Boolean  @default(false)
-  creadoEn   DateTime @default(now())
+  id        String   @id @default(uuid())
+  usuarioId String
+  mensaje   String
+  leido     Boolean  @default(false)
+  creadoEn  DateTime @default(now())
 
-  usuario    Usuario  @relation(fields: [usuarioId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
 }
 
+model SesionActiva {
+  id        String   @id @default(uuid())
+  usuarioId String
+  tokenId   String   @unique
+  creadoEn  DateTime @default(now())
+  expiraEn  DateTime
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+}
+
+model Promocion {
+  id              String    @id @default(uuid())
+  nombre          String
+  descripcion     String
+  porcentaje      Int
+  codigo          String?   @unique
+  minDias         Int?
+  diasSemana      Int[]     @default([])
+  tipoDisfraz     String?
+  temporadaEvento String?
+  vigenteDesde    DateTime?
+  vigenteHasta    DateTime?
+  activa          Boolean   @default(true)
+  creadoEn        DateTime  @default(now())
+}
+
+enum OrigenDisfraz {
+  CATALOGO
+  ALMACEN
+  A_MEDIDA
+}
+
+enum TipoReserva {
+  A_MEDIDA
+  AJUSTE_TALLA
+}
+
+model Receta {
+  id            String   @id @default(uuid())
+  nombre        String   @unique
+  descripcion   String?
+  palabrasClave String[] @default([])
+  precioDia     Decimal  @db.Decimal(10, 2)
+  activa        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+
+  piezas     RecetaPieza[]
+  reservas   Reserva[]
+  peticiones PeticionDisfraz[]
+}
+
+model RecetaPieza {
+  id             String     @id @default(uuid())
+  recetaId       String
+  etiqueta       String
+  tipo           TipoPrenda
+  colores        String[]   @default([])
+  nombreContiene String?
+  obligatoria    Boolean    @default(true)
+
+  receta Receta @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+
+  @@index([recetaId])
+}
+
+model Reserva {
+  id              String      @id @default(uuid())
+  tipo            TipoReserva
+  usuarioId       String
+  disfrazFisicoId String
+  recetaId        String?
+  peticion        String?
+  tallaRopa       String?
+  tallaCalzado    String?
+  vence           DateTime
+  confirmadaEn    DateTime?
+  liberadaEn      DateTime?
+  creadoEn        DateTime    @default(now())
+
+  usuario       Usuario            @relation(fields: [usuarioId], references: [id])
+  disfrazFisico DisfrazFisico      @relation(fields: [disfrazFisicoId], references: [id])
+  receta        Receta?            @relation(fields: [recetaId], references: [id])
+  movimientos   MovimientoPrenda[]
+
+  @@index([disfrazFisicoId])
+  @@index([usuarioId])
+}
+
+model MovimientoPrenda {
+  id        String   @id @default(uuid())
+  reservaId String
+  prendaId  String
+  desdeId   String
+  haciaId   String
+  orden     Int
+  creadoEn  DateTime @default(now())
+
+  reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+  prenda  Prenda  @relation(fields: [prendaId], references: [id])
+
+  @@index([reservaId])
+  @@index([prendaId])
+}
+
+model PeticionDisfraz {
+  id               String   @id @default(uuid())
+  usuarioId        String
+  texto            String
+  textoNormalizado String
+  recetaId         String?
+  atendida         Boolean  @default(false)
+  creadoEn         DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  receta  Receta? @relation(fields: [recetaId], references: [id])
+
+  @@index([textoNormalizado])
+}

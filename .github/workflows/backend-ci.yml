@@ -1,0 +1,33 @@
+name: Backend CI
+
+on:
+  push:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    name: Backend — typecheck y build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente de Prisma
+        run: npm run prisma:generate
+        env:
+          DATABASE_URL: "postgresql://usuario:clave@localhost:5432/disfraz_test_db"
+
+      - name: Verificar tipos y compilar
+        run: npm run build

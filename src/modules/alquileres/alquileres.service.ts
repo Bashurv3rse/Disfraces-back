@@ -1,76 +1,114 @@
 import { prisma } from "../../config/prisma";
 import { CrearAlquilerInput } from "./alquileres.schema";
-
-interface PiezaResumen {
-  id: string;
-  precioAlquiler: unknown;
-}
+import { cotizar } from "../pagos/precios.service";
+import { ReservaPerdida } from "../a-medida/reservas.base";
 
 const NOMBRE_DIA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const NOMBRE_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-const ETIQUETA_TIPO: Record<string, string> = {
-  SOMBRERO: "Sombreros",
-  CAMISA_POLO: "Camisas/Polos",
-  PANTALON: "Pantalones",
-  ZAPATO_ZAPATILLA: "Zapatos",
-  ABRIGO: "Abrigos",
-  CHALECO: "Chalecos",
-  TRAJE: "Trajes",
-  TACON: "Tacones",
-  ACCESORIO: "Accesorios",
-};
 
-export async function crearAlquiler(datos: CrearAlquilerInput, usuarioId: string) {
-  const piezaIds = datos.piezas.map((p) => p.piezaId);
-  const piezasCatalogo = await prisma.pieza.findMany({ where: { id: { in: piezaIds } } });
-  const porId = new Map(piezasCatalogo.map((p: PiezaResumen) => [p.id, p]));
+export interface PreciosAlquiler {
+  montoTotal: number; // total del alquiler YA con el descuento aplicado
+  montoGarantia: number; // 25% de montoTotal
+  descuento: number;
+  detalleDescuento: string | null;
+}
 
-  const montoTotal = piezasCatalogo.reduce((suma: number, p: PiezaResumen) => suma + Number(p.precioAlquiler), 0);
-  const montoGarantia = Math.round(montoTotal * 0.2 * 100) / 100;
+// Si se pasan `precios` (flujo de pago), se guardan tal cual: son los que el cliente pagó.
+// Si no (alquiler creado por un administrador), se calculan con las ofertas automáticas.
+// Si se pasan `precios` (flujo de pago), se guardan tal cual: son los que el cliente pagó.
+// Si no (alquiler creado por un administrador), se calculan con las ofertas automáticas.
+// `reservasIds`: reservas de disfraces a medida que se confirman en la MISMA transacción que
+// crea el alquiler. Si alguna ya no está activa, no se crea nada y se lanza ReservaPerdida.
+export async function crearAlquiler(
+  datos: CrearAlquilerInput,
+  usuarioId: string,
+  opciones: { stripeSessionId?: string; precios?: PreciosAlquiler; reservasIds?: string[] } = {}
+) {
+  const cotizacion = await cotizar({
+    disfraces: datos.disfraces,
+    fechaInicio: datos.fechaInicio,
+    fechaFin: datos.fechaFin,
+  });
 
-  return prisma.alquiler.create({
-    data: {
-      usuarioId,
-      fechaInicio: new Date(datos.fechaInicio),
-      fechaFin: new Date(datos.fechaFin),
-      evento: datos.evento,
-      estado: "ACTIVO",
-      montoTotal,
-      montoGarantia,
-      piezas: {
-        create: datos.piezas.map((item) => {
-          const pieza = porId.get(item.piezaId) as PiezaResumen;
-          return {
-            piezaId: item.piezaId,
-            precioUnitario: pieza.precioAlquiler as any,
-            tallaElegida: item.tallaElegida,
-            colorElegido: item.colorElegido,
-          };
-        }),
+  const precios: PreciosAlquiler = opciones.precios ?? {
+    montoTotal: cotizacion.totalAlquiler,
+    montoGarantia: cotizacion.garantia,
+    descuento: cotizacion.descuento,
+    detalleDescuento: cotizacion.detalleDescuento,
+  };
+
+  return prisma.$transaction(async (tx) => {
+    for (const reservaId of opciones.reservasIds ?? []) {
+      const confirmada = await tx.reserva.updateMany({
+        where: { id: reservaId, usuarioId, liberadaEn: null, confirmadaEn: null },
+        data: { confirmadaEn: new Date() },
+      });
+      if (confirmada.count === 0) {
+        // Puede estar ya confirmada (un reintento tras un fallo): eso sí es válido.
+        const yaConfirmada = await tx.reserva.findFirst({
+          where: { id: reservaId, usuarioId, liberadaEn: null, confirmadaEn: { not: null } },
+          select: { id: true },
+        });
+        if (!yaConfirmada) throw new ReservaPerdida();
+      }
+    }
+
+    return tx.alquiler.create({
+      data: {
+        usuarioId,
+        fechaInicio: new Date(datos.fechaInicio),
+        fechaFin: new Date(datos.fechaFin),
+        evento: datos.evento,
+        estado: "ACTIVO",
+        montoTotal: precios.montoTotal,
+        montoGarantia: precios.montoGarantia,
+        descuento: precios.descuento,
+        detalleDescuento: precios.detalleDescuento,
+        stripeSessionId: opciones.stripeSessionId,
+        disfraces: {
+          // precioUnitario sigue siendo el precio POR DÍA de lista; el descuento va a nivel de alquiler.
+          create: cotizacion.lineas.map((l) => ({ disfrazFisicoId: l.disfrazId, precioUnitario: l.precioDia })),
+        },
       },
-    },
-    include: { piezas: { include: { pieza: true } } },
+      include: { disfraces: { include: { disfrazFisico: true } } },
+    });
   });
 }
 
 export function listarPropios(usuarioId: string) {
   return prisma.alquiler.findMany({
     where: { usuarioId },
-    include: { piezas: { include: { pieza: true } } },
+    include: {
+      disfraces: { include: { disfrazFisico: { include: { prendasActuales: true } } } },
+      // Comprobante de la garantía: lo que el cliente puede ver de la revisión de la tienda.
+      devolucion: {
+        select: {
+          fechaDevolucion: true,
+          garantiaEstado: true,
+          garantiaMonto: true,
+          garantiaMotivo: true,
+          garantiaReembolsoId: true,
+          garantiaResueltaEn: true,
+          prendas: {
+            select: {
+              estadoPrenda: true,
+              estadoAdmin: true,
+              observacion: true,
+              prenda: { select: { id: true, nombre: true, color: true, talla: true } },
+            },
+          },
+        },
+      },
+    },
     orderBy: { creadoEn: "desc" },
   });
 }
 
 export function listarTodos() {
   return prisma.alquiler.findMany({
-    include: { piezas: { include: { pieza: true } }, usuario: { select: { nombre: true, email: true } } },
+    include: { disfraces: { include: { disfrazFisico: true } }, usuario: { select: { nombre: true, email: true } } },
     orderBy: { creadoEn: "desc" },
   });
-}
-
-export async function eliminarAlquiler(id: string, usuarioId: string) {
-  await prisma.alquilerPieza.deleteMany({ where: { alquilerId: id } });
-  return prisma.alquiler.deleteMany({ where: { id, usuarioId } });
 }
 
 export async function resumenAdmin() {
@@ -91,49 +129,23 @@ export async function resumenAdmin() {
   const hoyUTC = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate()));
 
   const [
-    totalAlquileres,
-    alquileresActivos,
-    alquileresProximos,
-    alquileresDelMes,
-    ultimos,
-    alquileresUltimos4Meses,
-    piezasAlquiladas,
-    alquileresUltimos7Dias,
-    alertasStock,
-    devolucionesPendientes,
+    totalAlquileres, alquileresActivos, alquileresProximos, alquileresDelMes, ultimos,
+    alquileresUltimos4Meses, disfracesAlquilados, alquileresUltimos7Dias, devolucionesPendientes,
+    disfracesTodos,
   ] = await Promise.all([
     prisma.alquiler.count(),
-    // "Activo" = el periodo de alquiler ya empezó y todavía no termina (no solo que no se haya devuelto).
-    prisma.alquiler.count({ where: { estado: "ACTIVO", fechaInicio: { lte: ahora }, fechaFin: { gte: hoyUTC } } }),
+    prisma.alquiler.count({ where: { estado: "ACTIVO", fechaInicio: { lte: hoyUTC }, fechaFin: { gte: hoyUTC } } }),
     prisma.alquiler.count({ where: { estado: "ACTIVO", fechaInicio: { gt: hoyUTC } } }),
     prisma.alquiler.findMany({ where: { creadoEn: { gte: inicioMes } }, select: { montoTotal: true } }),
-    prisma.alquiler.findMany({
-      take: 5,
-      orderBy: { creadoEn: "desc" },
-      include: { usuario: { select: { nombre: true } } },
-    }),
-    prisma.alquiler.findMany({
-      where: { creadoEn: { gte: hace4Meses } },
-      select: { creadoEn: true, montoTotal: true },
-    }),
-    prisma.alquilerPieza.findMany({ select: { pieza: { select: { tipo: true } } } }),
-    prisma.alquiler.findMany({
-      where: { creadoEn: { gte: hace7Dias } },
-      select: { creadoEn: true },
-    }),
-    prisma.pieza.findMany({
-      where: { stock: { lte: 6 } },
-      orderBy: { stock: "asc" },
-      take: 6,
-      select: { nombre: true, color: true, modelo: true, stock: true },
-    }),
-    prisma.devolucion.count({ where: { estado: "PENDIENTE" } }),
+    prisma.alquiler.findMany({ take: 5, orderBy: { creadoEn: "desc" }, include: { usuario: { select: { nombre: true } } } }),
+    prisma.alquiler.findMany({ where: { creadoEn: { gte: hace4Meses } }, select: { creadoEn: true, montoTotal: true } }),
+    prisma.alquilerDisfraz.findMany({ select: { disfrazFisico: { select: { tipoDisfraz: true } } } }),
+    prisma.alquiler.findMany({ where: { creadoEn: { gte: hace7Dias } }, select: { creadoEn: true } }),
+    prisma.devolucion.count({ where: { garantiaEstado: "PENDIENTE" } }),
+    prisma.disfrazFisico.findMany({ where: { origen: "CATALOGO" }, include: { prendasHogar: true } }),
   ]);
 
-  const ingresosMes = alquileresDelMes.reduce(
-    (s: number, a: { montoTotal: unknown }) => s + Number(a.montoTotal),
-    0
-  );
+  const ingresosMes = alquileresDelMes.reduce((s: number, a: { montoTotal: unknown }) => s + Number(a.montoTotal), 0);
 
   const mesesLabels: string[] = [];
   const hoy = new Date();
@@ -147,14 +159,11 @@ export async function resumenAdmin() {
     const clave = `${NOMBRE_MES[d.getMonth()]}-${d.getFullYear()}`;
     if (clave in ingresosPorMes) ingresosPorMes[clave] += Number(a.montoTotal);
   }
-  const ingresosMensuales = mesesLabels.map((clave) => ({
-    mes: clave.split("-")[0],
-    ingresos: Math.round(ingresosPorMes[clave] * 100) / 100,
-  }));
+  const ingresosMensuales = mesesLabels.map((clave) => ({ mes: clave.split("-")[0], ingresos: Math.round(ingresosPorMes[clave] * 100) / 100 }));
 
   const conteoTipo: Record<string, number> = {};
-  for (const ap of piezasAlquiladas as { pieza: { tipo: string } }[]) {
-    const etiqueta = ETIQUETA_TIPO[ap.pieza.tipo] || ap.pieza.tipo;
+  for (const ad of disfracesAlquilados as { disfrazFisico: { tipoDisfraz: string } }[]) {
+    const etiqueta = ad.disfrazFisico.tipoDisfraz;
     conteoTipo[etiqueta] = (conteoTipo[etiqueta] || 0) + 1;
   }
   const porCategoria = Object.entries(conteoTipo).map(([categoria, valor]) => ({ categoria, valor }));
@@ -172,13 +181,13 @@ export async function resumenAdmin() {
   }
   const alquileresPorDia = diasLabels.map((dia) => ({ dia, cantidad: conteoDia[dia] }));
 
+  const disfracesIncompletos = (disfracesTodos as { id: string; nombre: string; prendasHogar: { disfrazActualId: string; estado: string }[] }[])
+    .filter((d) => !d.prendasHogar.every((p) => p.disfrazActualId === d.id && p.estado === "DISPONIBLE"))
+    .map((d) => ({ nombre: d.nombre, detalle: "Disfraz incompleto — falta reponer prenda(s)", unidades: 0 }));
+
   return {
-    totalAlquileres,
-    alquileresActivos,
-    alquileresProximos,
-    ingresosMes,
-    devolucionesPendientes,
-    ultimosAlquileres: ultimos.map((a: any) => ({
+    totalAlquileres, alquileresActivos, alquileresProximos, ingresosMes, devolucionesPendientes,
+    ultimosAlquileres: (ultimos as any[]).map((a) => ({
       cliente: a.usuario.nombre,
       monto: Number(a.montoTotal),
       estado: a.estado === "ACTIVO" ? "activo" : "completado",
@@ -186,10 +195,6 @@ export async function resumenAdmin() {
     ingresosMensuales,
     porCategoria,
     alquileresPorDia,
-    alertasStock: alertasStock.map((p: { nombre: string; color: string; modelo: string | null; stock: number }) => ({
-      nombre: p.nombre,
-      detalle: [p.color, p.modelo].filter(Boolean).join(" · "),
-      unidades: p.stock,
-    })),
+    alertasStock: disfracesIncompletos,
   };
 }
