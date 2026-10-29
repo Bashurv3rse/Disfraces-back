@@ -128,10 +128,10 @@ app.use("/api/a-medida", aMedidaRouter);
 app.use("/api/ajuste-talla/reservar", limitadorAMedidaReserva);
 app.use("/api/ajuste-talla", limitadorAMedidaConsulta, ajusteTallaRouter);
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 if (require.main === module) {
-  app.listen(PORT, () => {
+  app.listen(PORT, "127.0.0.1", () => {
     console.log(`Servidor corriendo en http://localhost:${PORT}`);
   });
 }
