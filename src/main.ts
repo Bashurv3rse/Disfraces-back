@@ -13,12 +13,16 @@ export const app = express();
 app.use(helmet());
 
 // --- CORS restringido a un origen conocido, no abierto a cualquiera ---
-const origenPermitido =
-  process.env.CORS_ORIGIN || "http://localhost:5173";
+const origenesPermitidos = (
+  process.env.CORS_ORIGIN || "http://localhost:5173"
+)
+  .split(",")
+  .map((origen) => origen.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: origenPermitido,
+    origin: origenesPermitidos,
     credentials: true,
   })
 );
