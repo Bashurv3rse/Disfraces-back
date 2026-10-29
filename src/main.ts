@@ -7,7 +7,7 @@ import cookieParser from "cookie-parser";
 
 dotenv.config();
 
-const app = express();
+export const app = express();
 
 // --- Cabeceras de seguridad HTTP (mitiga Clickjacking, MIME-sniffing, XSS) ---
 app.use(helmet());
@@ -36,6 +36,10 @@ const limitadorLogin = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+
+  // La suite habitual evita el límite; las pruebas de seguridad pueden
+  // activarlo explícitamente sin cambiar NODE_ENV ni la base de test.
+  skip: () => process.env.NODE_ENV === "test" && process.env.TEST_LOGIN_RATE_LIMIT !== "true",
 });
 
 const limitadorRegistro = rateLimit({
@@ -126,6 +130,8 @@ app.use("/api/ajuste-talla", limitadorAMedidaConsulta, ajusteTallaRouter);
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  });
+}

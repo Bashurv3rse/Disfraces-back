@@ -3,6 +3,7 @@ import { crearAlquilerSchema } from "./alquileres.schema";
 import { crearAlquiler, listarPropios, listarTodos, resumenAdmin } from "./alquileres.service";
 import { ErrorCotizacion } from "../pagos/precios.service";
 import { validarSoloCatalogo } from "../pagos/carrito.service";
+import { disfracesNoDisponibles } from "../disfraces/disfraces.service";
 
 export async function crear(req: Request, res: Response) {
   const parseo = crearAlquilerSchema.safeParse(req.body);
@@ -12,6 +13,13 @@ export async function crear(req: Request, res: Response) {
 
   try {
     await validarSoloCatalogo(parseo.data.disfraces);
+    // El alquiler presencial también respeta las reservas de ajustes de talla,
+    // incluidos los disfraces donantes que tienen piezas intercambiadas.
+    const noDisponibles = await disfracesNoDisponibles(parseo.data.disfraces);
+    if (noDisponibles.length > 0) {
+      const detalle = noDisponibles.map(d => `«${d.nombre}» (${d.estado.toLowerCase()})`).join(", ");
+      throw new ErrorCotizacion(`No se puede crear el alquiler: ${detalle}.`, 409);
+    }
     const alquiler = await crearAlquiler(parseo.data, req.usuario!.id);
     return res.status(201).json(alquiler);
   } catch (error) {
