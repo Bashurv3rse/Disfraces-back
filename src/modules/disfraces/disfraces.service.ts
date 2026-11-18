@@ -294,7 +294,12 @@ export async function disponibilidadDeDisfraces(ids: string[], rango: RangoFecha
   });
   const hoy = new Date();
   const [tramos, reservados] = await Promise.all([obtenerTramosOcupados(hoy), obtenerReservadosIds()]);
-  return disfraces.map((d: any) => {
+  const firma = (d: any) =>
+    (d.prendasHogar as { tipo: string; talla: string }[])
+      .map((p) => `${p.tipo}:${p.talla}`)
+      .sort()
+      .join("|");
+  const resultado = disfraces.map((d: any) => {
     const estado = calcularEstadoEnRango(d, rango, tramos, reservados);
     return {
       id: d.id as string,
@@ -303,8 +308,39 @@ export async function disponibilidadDeDisfraces(ids: string[], rango: RangoFecha
       disponible: estado === "DISPONIBLE",
       bloqueo: bloqueoFisico(d, reservados),
       ocupaciones: diasBloqueadosParaInicio(tramos.get(d.id), lavadoHastaDe(d), hoy),
+      reemplazo: null as { id: string; nombre: string } | null,
     };
   });
+
+  // Si una unidad no está libre en esas fechas, se busca otra idéntica (misma familia y mismas
+  // tallas) que sí lo esté, para que dos clientes puedan alquilar el mismo disfraz a la vez.
+  const sinLibre = resultado.filter((r) => !r.disponible);
+  if (sinLibre.length === 0) return resultado;
+  const familias = Array.from(new Set(disfraces.filter((d: any) => !!d.familia).map((d: any) => d.familia as string)));
+  if (familias.length === 0) return resultado;
+  const candidatos: any[] = await prisma.disfrazFisico.findMany({
+    where: { familia: { in: familias }, origen: "CATALOGO" },
+    include: { prendasHogar: true, prendasActuales: true },
+    orderBy: { nombre: "asc" },
+  });
+  const usados = new Set<string>(ids);
+  for (const r of sinLibre) {
+    const original: any = disfraces.find((d: any) => d.id === r.id);
+    if (!original?.familia) continue;
+    const f = firma(original);
+    const gemelo = candidatos.find(
+      (c) =>
+        !usados.has(c.id) &&
+        c.familia === original.familia &&
+        firma(c) === f &&
+        calcularEstadoEnRango(c, rango, tramos, reservados) === "DISPONIBLE"
+    );
+    if (gemelo) {
+      usados.add(gemelo.id);
+      r.reemplazo = { id: gemelo.id, nombre: gemelo.nombre };
+    }
+  }
+  return resultado;
 }
 
 // Libera las reservas sin pagar que ya vencieron, termina el lavado de los disfraces que ya

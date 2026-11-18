@@ -26,7 +26,18 @@ const TALLAS_CALZADO = [36, 37, 38, 39, 40, 41, 42, 43];
 
 // Cada familia tiene una unidad por cada combinación de talla de ropa y de calzado (4 x 8 = 32),
 // así el cliente puede elegir cualquier talla de ropa con cualquier calzado.
-const UNIDADES_POR_FAMILIA = TALLAS_ROPA.length * TALLAS_CALZADO.length;
+const COMBINACIONES = TALLAS_ROPA.length * TALLAS_CALZADO.length;
+// Copias idénticas por combinación: los disfraces más pedidos tienen 2, así dos clientes pueden
+// alquilar la misma talla en las mismas fechas.
+const COPIAS_POR_FAMILIA: Record<string, number> = {
+  "Marinera Peruana": 2,
+  "Spider-Man": 2,
+  "Batman": 2,
+  "Bruja Clásica": 2,
+  "Reina de Gala": 2,
+  "Rey de Gala": 2,
+};
+const unidadesDe = (familia: string) => COMBINACIONES * (COPIAS_POR_FAMILIA[familia] ?? 1);
 
 function tallaPara(tipo: string, indice: number): string {
   if (tipo === "ZAPATO" || tipo === "TACON") return String(TALLAS_CALZADO[indice % TALLAS_CALZADO.length]);
@@ -354,13 +365,13 @@ async function main() {
   await prisma.disfrazFisico.deleteMany();
   await prisma.receta.deleteMany();
 
-  console.log(`Creando ${UNIDADES_POR_FAMILIA} unidades por cada familia…`);
+  console.log(`Creando ${COMBINACIONES} combinaciones de talla por familia (x2 copias en los más pedidos)…`);
   let totalDisfraces = 0;
   let totalPrendas = 0;
   const idsCreados: { nombre: string; id: string }[] = [];
 
   for (const familia of familias) {
-    for (let i = 0; i < UNIDADES_POR_FAMILIA; i++) {
+    for (let i = 0; i < unidadesDe(familia.nombre); i++) {
       const nombreInstancia = `${familia.nombre} #${i + 1}`;
       const disfraz = await prisma.disfrazFisico.create({
         data: {
