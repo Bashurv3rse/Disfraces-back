@@ -24,7 +24,7 @@ interface DefinicionReceta {
 }
 
 const TALLAS_ROPA = ["S", "M", "L", "XL"];
-const TALLAS_CALZADO = ["37", "38", "39", "40", "41", "42"];
+const TALLAS_CALZADO = ["36", "37", "38", "39", "40", "41", "42", "43"];
 const UNIDADES_POR_TALLA = 2;
 
 // Piezas genéricas, no atadas a ningún disfraz del catálogo.
@@ -171,7 +171,27 @@ export async function sembrarAlmacenYRecetas(prisma: PrismaClient) {
   const almacenExistente = await prisma.disfrazFisico.findFirst({ where: { origen: "ALMACEN" } });
 
   if (almacenExistente) {
-    console.log("El almacén ya existe: no se tocan sus piezas.");
+    // Solo se agregan las tallas/unidades que falten (p. ej. calzados 36 y 43); lo existente no se toca.
+    const existentes = await prisma.prenda.groupBy({
+      by: ["tipo", "nombre", "color", "talla"],
+      where: { disfrazHogarId: almacenExistente.id },
+      _count: { _all: true },
+    });
+    const cuenta = new Map<string, number>(
+      existentes.map((e): [string, number] => [`${e.tipo}|${e.nombre.toLowerCase()}|${e.color.toLowerCase()}|${e.talla}`, e._count._all])
+    );
+    const faltantes: Prisma.PrendaCreateManyInput[] = [];
+    for (const f of filasDelAlmacen(almacenExistente.id)) {
+      const k = `${f.tipo}|${f.nombre.toLowerCase()}|${f.color.toLowerCase()}|${f.talla}`;
+      const hay = cuenta.get(k) ?? 0;
+      if (hay > 0) {
+        cuenta.set(k, hay - 1); // ya cubre una de las unidades pedidas
+      } else {
+        faltantes.push(f);
+      }
+    }
+    if (faltantes.length > 0) await prisma.prenda.createMany({ data: faltantes });
+    console.log(`El almacén ya existe: se completaron ${faltantes.length} piezas que faltaban.`);
   } else {
     const almacen = await prisma.disfrazFisico.create({
       data: {

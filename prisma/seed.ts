@@ -21,13 +21,17 @@ interface FamiliaDisfraz {
   prendas: PrendaBase[];
 }
 
-const TALLAS_ROPA = ["S", "M", "L"];
-const TALLAS_CALZADO = [37, 39, 41];
+const TALLAS_ROPA = ["S", "M", "L", "XL"];
+const TALLAS_CALZADO = [36, 37, 38, 39, 40, 41, 42, 43];
+
+// Cada familia tiene una unidad por cada combinación de talla de ropa y de calzado (4 x 8 = 32),
+// así el cliente puede elegir cualquier talla de ropa con cualquier calzado.
+const UNIDADES_POR_FAMILIA = TALLAS_ROPA.length * TALLAS_CALZADO.length;
 
 function tallaPara(tipo: string, indice: number): string {
-  if (tipo === "ZAPATO" || tipo === "TACON") return String(TALLAS_CALZADO[indice]);
+  if (tipo === "ZAPATO" || tipo === "TACON") return String(TALLAS_CALZADO[indice % TALLAS_CALZADO.length]);
   if (tipo === "PANUELO" || tipo === "ACCESORIO") return "única";
-  return TALLAS_ROPA[indice];
+  return TALLAS_ROPA[Math.floor(indice / TALLAS_CALZADO.length) % TALLAS_ROPA.length];
 }
 
 const familias: FamiliaDisfraz[] = [
@@ -350,13 +354,13 @@ async function main() {
   await prisma.disfrazFisico.deleteMany();
   await prisma.receta.deleteMany();
 
-  console.log("Creando 3 instancias por cada familia…");
+  console.log(`Creando ${UNIDADES_POR_FAMILIA} unidades por cada familia…`);
   let totalDisfraces = 0;
   let totalPrendas = 0;
   const idsCreados: { nombre: string; id: string }[] = [];
 
   for (const familia of familias) {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < UNIDADES_POR_FAMILIA; i++) {
       const nombreInstancia = `${familia.nombre} #${i + 1}`;
       const disfraz = await prisma.disfrazFisico.create({
         data: {

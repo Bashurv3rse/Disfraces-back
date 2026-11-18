@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { crear, misAlquileres, todos, resumen } from "./alquileres.controller";
+import { crear, misAlquileres, todos, resumen, historial } from "./alquileres.controller";
 import { verificarToken, requiereRol } from "../auth/auth.middleware";
 
 export const alquileresRouter = Router();
@@ -10,3 +10,4 @@ alquileresRouter.post("/", verificarToken, requiereRol("ADMINISTRADOR"), crear);
 alquileresRouter.get("/mios", verificarToken, misAlquileres);
 alquileresRouter.get("/admin/todos", verificarToken, requiereRol("ADMINISTRADOR"), todos);
 alquileresRouter.get("/admin/resumen", verificarToken, requiereRol("ADMINISTRADOR"), resumen);
+alquileresRouter.get("/admin/historial", verificarToken, requiereRol("ADMINISTRADOR"), historial);

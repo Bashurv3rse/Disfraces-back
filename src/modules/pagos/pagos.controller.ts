@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { crearSesionSchema, cotizarSchema } from "./pagos.schema";
-import { crearSesionCheckout, confirmarPago } from "./pagos.service";
+import { crearSesionCheckout, confirmarPago, obtenerBoleta } from "./pagos.service";
 import { cotizar, listarOfertasVigentes, ErrorCotizacion } from "./precios.service";
 import { prepararCarrito } from "./carrito.service";
 import { ErrorReserva } from "../a-medida/reservas.service";
@@ -53,6 +53,18 @@ export async function confirmar(req: Request, res: Response) {
   try {
     const alquiler = await confirmarPago(sessionId, req.usuario!.id);
     return res.status(200).json(alquiler);
+  } catch (error: any) {
+    return res.status(409).json({ mensaje: error.message });
+  }
+}
+
+export async function boleta(req: Request, res: Response) {
+  const { sessionId } = req.query;
+  if (!sessionId || typeof sessionId !== "string") {
+    return res.status(400).json({ mensaje: "Falta el session_id de Stripe" });
+  }
+  try {
+    return res.json(await obtenerBoleta(sessionId, req.usuario!.id));
   } catch (error: any) {
     return res.status(409).json({ mensaje: error.message });
   }

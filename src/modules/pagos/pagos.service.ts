@@ -4,6 +4,7 @@ import { CrearSesionInput } from "./pagos.schema";
 import { crearAlquiler } from "../alquileres/alquileres.service";
 import type { PreciosAlquiler } from "../alquileres/alquileres.service";
 import { disfracesNoDisponibles } from "../disfraces/disfraces.service";
+import { rangoDesdeTexto } from "../disfraces/rango";
 import { cotizar, ErrorCotizacion } from "./precios.service";
 import { extenderReservasDelCarrito, prepararCarrito } from "./carrito.service";
 import { ReservaPerdida, liberarSinConfirmar } from "../a-medida/reservas.base";
@@ -39,7 +40,11 @@ export async function crearSesionCheckout(datos: CrearSesionInput, usuarioId: st
     throw new ErrorCotizacion(cotizacion.codigo.mensaje);
   }
 
-  const noDisponibles = await disfracesNoDisponibles(datos.disfraces, usuarioId);
+  const noDisponibles = await disfracesNoDisponibles(
+    datos.disfraces,
+    usuarioId,
+    rangoDesdeTexto(datos.fechaInicio, datos.fechaFin)
+  );
   if (noDisponibles.length > 0) {
     const detalle = noDisponibles
       .map((d) => `«${d.nombre}» ${TEXTO_ESTADO[d.estado] ?? "no está disponible"}`)
@@ -81,6 +86,11 @@ export async function crearSesionCheckout(datos: CrearSesionInput, usuarioId: st
     line_items: lineItems,
     success_url: `${FRONTEND_URL}/pago-exitoso?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${FRONTEND_URL}/catalogo`,
+    // Stripe genera, al pagar, una factura con su PDF: es la base de la boleta que descarga el cliente.
+    invoice_creation: {
+      enabled: true,
+      invoice_data: { description: "Alquiler de disfraces (incluye garantía reembolsable)", metadata: { usuarioId } },
+    },
     // La reserva real NO se crea aquí, solo al confirmar el pago (ver confirmarPago).
     // Los montos cotizados viajan en la sesión: si una oferta cambia mientras el cliente
     // paga, se registra lo que realmente pagó.
@@ -232,4 +242,31 @@ export async function confirmarPago(sessionId: string, usuarioId: string) {
     }
     throw error;
   }
+}
+
+export interface BoletaPago {
+  // «pdf»: descarga directa del PDF de la factura; «recibo»: página de recibo de Stripe (con opción de descargar).
+  tipo: "pdf" | "recibo";
+  url: string;
+}
+
+// Enlace para que el cliente descargue la boleta de un pago suyo. Se apoya en Stripe: primero la
+// factura en PDF; si no existe (pagos hechos antes de activarlas), el recibo del cobro.
+export async function obtenerBoleta(sessionId: string, usuarioId: string): Promise<BoletaPago> {
+  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["invoice", "payment_intent.latest_charge"],
+  });
+
+  if (session.payment_status !== "paid") throw new Error("El pago aún no se ha confirmado con Stripe");
+  // Igual que al confirmar: solo el dueño del pago puede pedir su boleta.
+  if (session.metadata?.usuarioId !== usuarioId) throw new Error("Esta sesión de pago no corresponde a tu usuario");
+
+  const factura = session.invoice && typeof session.invoice !== "string" ? session.invoice : null;
+  if (factura?.invoice_pdf) return { tipo: "pdf", url: factura.invoice_pdf };
+
+  const pi = session.payment_intent && typeof session.payment_intent !== "string" ? session.payment_intent : null;
+  const cargo = pi?.latest_charge && typeof pi.latest_charge !== "string" ? pi.latest_charge : null;
+  if (cargo?.receipt_url) return { tipo: "recibo", url: cargo.receipt_url };
+
+  throw new Error("Stripe todavía no generó la boleta de este pago. Inténtalo de nuevo en unos segundos.");
 }

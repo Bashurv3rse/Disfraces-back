@@ -25,7 +25,7 @@ interface DefinicionReceta {
 }
 
 const TALLAS_ROPA = ["S", "M", "L", "XL"];
-const TALLAS_CALZADO = ["37", "38", "39", "40", "41", "42"];
+const TALLAS_CALZADO = ["36", "37", "38", "39", "40", "41", "42", "43"];
 const UNIDADES_POR_TALLA = 2;
 
 function tallasDe(tipo: TipoPrenda): string[] {

@@ -3,6 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { CrearDisfrazInput } from "./disfraces.schema";
 import { desarmarReservasTerminadas, liberarReservasVencidas, obtenerReservadosIds } from "../a-medida/reservas.base";
+import type { RangoFechas } from "./rango";
+import { etiquetaEstadoManual, etiquetaEstadoPrenda, registrarEventoDisfraz } from "./historial.service";
 
 // Error de regla de negocio, con el código HTTP que debe devolver el controller.
 export class ErrorDisfraz extends Error {
@@ -91,6 +93,13 @@ interface FiltrosDisfraz {
   tipos?: string[];
 }
 
+interface OpcionesListado {
+  // Rango de fechas para el que se quiere saber la disponibilidad (por defecto, hoy).
+  rango?: RangoFechas;
+  // Agrega a cada disfraz su disponibilidad en el rango y los días ocupados próximos.
+  conDisponibilidad?: boolean;
+}
+
 type EstadoCalculado = "DISPONIBLE" | "INCOMPLETO" | "ALQUILADO" | "RESERVADO" | "EN_REPARACION" | "SUSPENDIDO";
 export type FaseLavado = "LAVADO" | "PLANCHADO" | "EMPAQUETADO" | null;
 
@@ -139,6 +148,163 @@ export function fechaLiberacionLavado(desde: Date): Date {
 function estaEnLavado(d: { estadoManual: string | null; fechaSuspension: Date | null }): boolean {
   if (d.estadoManual !== "SUSPENDIDO" || !d.fechaSuspension) return false;
   return faseLavadoPorDias(diasHabilesTranscurridos(d.fechaSuspension, new Date())) !== null;
+}
+
+// --- Disponibilidad por fechas ---
+// Un alquiler solo deja el disfraz fuera de circulación en SUS fechas (más los 3 días hábiles de
+// lavado posteriores), no desde el momento en que se paga. Así un alquiler para dentro de una
+// semana no bloquea fechas anteriores ni posteriores a ese tramo.
+
+export type { RangoFechas };
+
+export interface TramoOcupado {
+  desde: Date; // primer día ocupado
+  hasta: Date; // día en que vuelve a estar libre (no incluido)
+}
+
+function aDiaUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+// Tramo que ocupa un alquiler abierto. Si ya pasó su fecha de fin y no se devolvió, el disfraz
+// sigue fuera hasta hoy (y luego pasa por el lavado).
+export function tramoDeAlquiler(inicio: Date, fin: Date, hoy: Date = new Date()): TramoOcupado {
+  const desde = aDiaUTC(inicio);
+  const finEfectivo = new Date(Math.max(aDiaUTC(fin).getTime(), aDiaUTC(hoy).getTime()));
+  return { desde, hasta: fechaLiberacionLavado(finEfectivo) };
+}
+
+// Dos tramos chocan si se superponen. El rango pedido incluye el lavado que tendrá el disfraz
+// después de SU fin, para que el alquiler siguiente no lo reciba sin lavar.
+export function chocaConTramo(rango: RangoFechas, tramo: TramoOcupado): boolean {
+  return aDiaUTC(rango.inicio) < tramo.hasta && fechaLiberacionLavado(aDiaUTC(rango.fin)) > tramo.desde;
+}
+
+export interface AlquilerAbierto {
+  disfrazFisicoId: string;
+  alquiler?: { fechaInicio: Date; fechaFin: Date } | null;
+}
+
+// Alquileres sin devolución cerrada (activos o pendientes), con sus fechas.
+async function obtenerTramosOcupados(hoy: Date = new Date()): Promise<Map<string, TramoOcupado[]>> {
+  const filas: AlquilerAbierto[] = await prisma.alquilerDisfraz.findMany({
+    where: { alquiler: { estado: { in: ["ACTIVO", "PENDIENTE"] } } },
+    select: { disfrazFisicoId: true, alquiler: { select: { fechaInicio: true, fechaFin: true } } },
+  });
+  const mapa = new Map<string, TramoOcupado[]>();
+  for (const f of filas) {
+    if (!f.alquiler) continue;
+    const lista = mapa.get(f.disfrazFisicoId) ?? [];
+    lista.push(tramoDeAlquiler(f.alquiler.fechaInicio, f.alquiler.fechaFin, hoy));
+    mapa.set(f.disfrazFisicoId, lista);
+  }
+  return mapa;
+}
+
+// Estado del disfraz PARA UN RANGO de fechas. Las marcas físicas (reparación, incompleto) y las
+// reservas vigentes de otras personas bloquean cualquier rango; el lavado en curso y los
+// alquileres solo bloquean los días que realmente ocupan.
+function calcularEstadoEnRango(
+  disfraz: {
+    id: string;
+    estadoManual: string | null;
+    fechaSuspension: Date | null;
+    prendasHogar: { tipo: string }[];
+    prendasActuales: { tipo: string; estado: string }[];
+  },
+  rango: RangoFechas,
+  tramos: Map<string, TramoOcupado[]>,
+  reservados: Set<string>
+): EstadoCalculado {
+  if (disfraz.estadoManual === "EN_REPARACION") return "EN_REPARACION";
+  if (disfraz.estadoManual === "SUSPENDIDO" && disfraz.fechaSuspension) {
+    const enLavado = faseLavadoPorDias(diasHabilesTranscurridos(disfraz.fechaSuspension, new Date())) !== null;
+    if (enLavado && aDiaUTC(rango.inicio) < fechaLiberacionLavado(disfraz.fechaSuspension)) return "SUSPENDIDO";
+  }
+  if ((tramos.get(disfraz.id) ?? []).some((t) => chocaConTramo(rango, t))) return "ALQUILADO";
+  if (reservados.has(disfraz.id)) return "RESERVADO";
+  if (contarFaltantes(disfraz) > 0) return "INCOMPLETO";
+  return "DISPONIBLE";
+}
+
+const diaIso = (d: Date) => d.toISOString().slice(0, 10);
+
+// Días en los que NO se puede empezar un alquiler (para el calendario del cliente). Incluye los
+// días previos a otro alquiler en los que el lavado posterior chocaría con él, y el lavado en
+// curso tras una devolución. No trae datos de quién alquiló: es lo que puede ver cualquier cliente.
+export function diasBloqueadosParaInicio(
+  tramos: TramoOcupado[] | undefined,
+  lavadoHasta: Date | null,
+  hoy: Date
+): { desde: string; hasta: string }[] {
+  const hoyDia = aDiaUTC(hoy);
+  const intervalos: { desde: Date; hasta: Date }[] = []; // hasta = último día bloqueado (incluido)
+
+  for (const t of tramos ?? []) {
+    if (t.hasta <= hoyDia) continue;
+    // Primer día desde el que un alquiler empezaría y su lavado se cruzaría con este tramo.
+    let primero = new Date(t.desde);
+    for (let i = 0; i < 10; i++) {
+      const anterior = new Date(primero.getTime() - 86_400_000);
+      if (anterior < hoyDia || fechaLiberacionLavado(anterior) <= t.desde) break;
+      primero = anterior;
+    }
+    intervalos.push({ desde: primero, hasta: new Date(t.hasta.getTime() - 86_400_000) });
+  }
+  if (lavadoHasta && lavadoHasta > hoyDia) {
+    intervalos.push({ desde: hoyDia, hasta: new Date(lavadoHasta.getTime() - 86_400_000) });
+  }
+
+  intervalos.sort((a, b) => a.desde.getTime() - b.desde.getTime());
+  const unidos: { desde: Date; hasta: Date }[] = [];
+  for (const i of intervalos) {
+    const ultimo = unidos[unidos.length - 1];
+    if (ultimo && i.desde.getTime() <= ultimo.hasta.getTime() + 86_400_000) {
+      if (i.hasta > ultimo.hasta) ultimo.hasta = i.hasta;
+    } else {
+      unidos.push({ ...i });
+    }
+  }
+  return unidos.map((i) => ({ desde: diaIso(i.desde), hasta: diaIso(i.hasta) }));
+}
+
+// Marca física que impide alquilar en cualquier fecha (a diferencia del alquiler o el lavado,
+// que solo ocupan unos días).
+function bloqueoFisico(
+  d: { estadoManual: string | null; prendasHogar: { tipo: string }[]; prendasActuales: { tipo: string; estado: string }[]; id: string },
+  reservados: Set<string>
+): "EN_REPARACION" | "RESERVADO" | "INCOMPLETO" | null {
+  if (d.estadoManual === "EN_REPARACION") return "EN_REPARACION";
+  if (reservados.has(d.id)) return "RESERVADO";
+  if (contarFaltantes(d) > 0) return "INCOMPLETO";
+  return null;
+}
+
+function lavadoHastaDe(d: { estadoManual: string | null; fechaSuspension: Date | null }): Date | null {
+  if (d.estadoManual !== "SUSPENDIDO" || !d.fechaSuspension) return null;
+  return fechaLiberacionLavado(d.fechaSuspension);
+}
+
+// Disponibilidad de varios disfraces para un rango (lo usa el carrito al elegir las fechas).
+export async function disponibilidadDeDisfraces(ids: string[], rango: RangoFechas) {
+  await limpiarSuspensionesVencidas();
+  const disfraces = await prisma.disfrazFisico.findMany({
+    where: { id: { in: ids } },
+    include: { prendasHogar: true, prendasActuales: true },
+  });
+  const hoy = new Date();
+  const [tramos, reservados] = await Promise.all([obtenerTramosOcupados(hoy), obtenerReservadosIds()]);
+  return disfraces.map((d: any) => {
+    const estado = calcularEstadoEnRango(d, rango, tramos, reservados);
+    return {
+      id: d.id as string,
+      nombre: d.nombre as string,
+      estado: estado as string,
+      disponible: estado === "DISPONIBLE",
+      bloqueo: bloqueoFisico(d, reservados),
+      ocupaciones: diasBloqueadosParaInicio(tramos.get(d.id), lavadoHastaDe(d), hoy),
+    };
+  });
 }
 
 // Libera las reservas sin pagar que ya vencieron, termina el lavado de los disfraces que ya
@@ -232,7 +398,7 @@ async function estaApartada(prendaId: string): Promise<boolean> {
   return (await prisma.movimientoPrenda.count({ where: { prendaId, reserva: { liberadaEn: null } } })) > 0;
 }
 
-export async function listarDisfraces(filtros: FiltrosDisfraz) {
+export async function listarDisfraces(filtros: FiltrosDisfraz, opciones: OpcionesListado = {}) {
   await limpiarSuspensionesVencidas();
 
   const disfraces = await prisma.disfrazFisico.findMany({
@@ -248,15 +414,30 @@ export async function listarDisfraces(filtros: FiltrosDisfraz) {
 
   const [alquiladosAhora, reservadosAhora] = await Promise.all([obtenerAlquiladosAhoraIds(), obtenerReservadosIds()]);
 
+  const hoy = new Date();
+  const rango = opciones.rango ?? { inicio: hoy, fin: hoy };
+  const tramos = opciones.conDisponibilidad ? await obtenerTramosOcupados(hoy) : null;
+
   return disfraces.map((d: any) => {
     const { estado, faseLavado } = calcularEstado(d, alquiladosAhora, reservadosAhora);
-    return {
+    const base = {
       ...d,
       estado,
       faseLavado,
       faltantes: contarFaltantes(d),
       completo: contarFaltantes(d) === 0,
       prestamosSalientes: contarPrestamosSalientes(d),
+    };
+    if (!tramos) return base;
+
+    const estadoEnRango = calcularEstadoEnRango(d, rango, tramos, reservadosAhora);
+    return {
+      ...base,
+      // «estado» sigue siendo el estado de hoy (lo usa el inventario del administrador);
+      // «disponibilidad» es lo que ve el cliente para SUS fechas.
+      disponibilidad: { estado: estadoEnRango, disponible: estadoEnRango === "DISPONIBLE" },
+      bloqueo: bloqueoFisico(d, reservadosAhora),
+      ocupaciones: diasBloqueadosParaInicio(tramos.get(d.id), lavadoHastaDe(d), hoy),
     };
   });
 }
@@ -284,13 +465,26 @@ export async function obtenerDisfrazConEstado(id: string) {
 // Disfraces de una lista que NO se pueden alquilar ahora (alquilados, reservados por otra
 // persona, incompletos, en lavado o en reparación). Es la misma regla que muestra el catálogo,
 // pero comprobada en el servidor. La reserva de la propia persona no cuenta como ocupado.
-export async function disfracesNoDisponibles(ids: string[], usuarioId?: string) {
+// Si se indica un rango de fechas, un alquiler solo cuenta como «ocupado» cuando se cruza con ese
+// rango; sin rango se mantiene la regla de «alquilado ahora» (alquiler sin devolución cerrada).
+export async function disfracesNoDisponibles(ids: string[], usuarioId?: string, rango?: RangoFechas) {
   await limpiarSuspensionesVencidas();
 
   const disfraces = await prisma.disfrazFisico.findMany({
     where: { id: { in: ids } },
     include: { prendasHogar: true, prendasActuales: true },
   });
+  if (rango) {
+    const [tramos, reservadosRango] = await Promise.all([obtenerTramosOcupados(), obtenerReservadosIds(usuarioId)]);
+    return disfraces
+      .map((d: any) => ({
+        id: d.id as string,
+        nombre: d.nombre as string,
+        estado: calcularEstadoEnRango(d, rango, tramos, reservadosRango) as string,
+      }))
+      .filter((d: { estado: string }) => d.estado !== "DISPONIBLE");
+  }
+
   const [alquilados, reservados] = await Promise.all([obtenerAlquiladosAhoraIds(), obtenerReservadosIds(usuarioId)]);
 
   return disfraces
@@ -352,6 +546,58 @@ interface PrendaDetalle {
 // cada «hueco» (prenda propia faltante/dañada, o prestada a otro disfraz) toma una
 // prenda prestada y disponible del mismo tipo. Así el detalle y el estado general
 // del disfraz nunca se contradicen.
+export type EstadoTemporal = "ALQUILADO" | "EN_LAVADO" | "POR_DESARMAR";
+
+// Disfraces a medida que hoy existen en el inventario: armados con piezas del almacén para un
+// cliente, y que siguen alquilados o en lavado. Cuando se desarman (sus piezas vuelven al
+// almacén) dejan de aparecer aquí solos; la reserva queda como historial.
+export async function listarATemporales() {
+  await limpiarSuspensionesVencidas(); // libera reservas vencidas, termina lavados y desarma lo que ya terminó
+
+  const reservas = await prisma.reserva.findMany({
+    where: { tipo: "A_MEDIDA", confirmadaEn: { not: null }, liberadaEn: null, disfrazFisico: { origen: "A_MEDIDA" } },
+    include: {
+      usuario: { select: { nombre: true, email: true } },
+      disfrazFisico: {
+        include: {
+          prendasActuales: { include: { disfrazHogar: { select: { nombre: true } } } },
+          alquileres: { include: { alquiler: { select: { estado: true, fechaInicio: true, fechaFin: true } } } },
+        },
+      },
+    },
+    orderBy: { creadoEn: "desc" },
+  });
+
+  return reservas.map((r: any) => {
+    const d = r.disfrazFisico;
+    const abierto = d.alquileres.map((a: any) => a.alquiler).find((a: any) => a.estado === "ACTIVO" || a.estado === "PENDIENTE");
+    let estado: EstadoTemporal = "POR_DESARMAR";
+    if (abierto) estado = "ALQUILADO";
+    else if (d.estadoManual === "SUSPENDIDO") estado = "EN_LAVADO";
+
+    return {
+      id: d.id as string,
+      nombre: d.nombre as string,
+      tipoDisfraz: d.tipoDisfraz as string,
+      cliente: { nombre: r.usuario.nombre as string, email: r.usuario.email as string },
+      estado,
+      fechaInicio: (abierto?.fechaInicio ?? null) as Date | null,
+      fechaFin: (abierto?.fechaFin ?? null) as Date | null,
+      lavadoHasta: lavadoHastaDe(d),
+      tallaRopa: r.tallaRopa as string | null,
+      tallaCalzado: r.tallaCalzado as string | null,
+      prendas: d.prendasActuales.map((p: any) => ({
+        id: p.id as string,
+        nombre: p.nombre as string,
+        tipo: p.tipo as string,
+        color: p.color as string,
+        talla: p.talla as string,
+        origen: (p.disfrazHogar?.nombre ?? "") as string,
+      })),
+    };
+  });
+}
+
 export async function obtenerDetalleInventario(id: string) {
   await limpiarSuspensionesVencidas();
 
@@ -507,12 +753,31 @@ export async function obtenerTiposDisponibles() {
 // --- Gestión manual del inventario físico (admin) ---
 // Todas bloqueadas mientras el disfraz esté alquilado.
 
-export async function actualizarEstadoManual(id: string, estado: "EN_REPARACION" | "SUSPENDIDO" | null) {
+export async function actualizarEstadoManual(id: string, estado: "EN_REPARACION" | "SUSPENDIDO" | null, actorId?: string) {
   if (await estaAlquiladoAhora(id)) throw new Error("Este disfraz está alquilado — no se puede modificar hasta que se devuelva.");
-  return prisma.disfrazFisico.update({ where: { id }, data: { estadoManual: estado } });
+
+  // El estado anterior se lee solo para el historial: si falla, el cambio se hace igual.
+  let anterior: string | null | undefined;
+  try {
+    anterior = (await prisma.disfrazFisico.findUnique({ where: { id }, select: { estadoManual: true } }))?.estadoManual;
+  } catch {
+    anterior = undefined;
+  }
+
+  const actualizado = await prisma.disfrazFisico.update({ where: { id }, data: { estadoManual: estado } });
+
+  if (anterior !== undefined && anterior !== estado) {
+    await registrarEventoDisfraz({
+      disfrazId: id,
+      tipo: "ESTADO",
+      usuarioId: actorId,
+      detalle: `El administrador cambió el estado de «${etiquetaEstadoManual(anterior)}» a «${etiquetaEstadoManual(estado)}».`,
+    });
+  }
+  return actualizado;
 }
 
-export async function actualizarPrenda(id: string, datos: { estado?: "DISPONIBLE" | "DANADA" | "FALTANTE"; calidad?: string }) {
+export async function actualizarPrenda(id: string, datos: { estado?: "DISPONIBLE" | "DANADA" | "FALTANTE"; calidad?: string }, actorId?: string) {
   const prenda = await prisma.prenda.findUnique({ where: { id } });
   if (!prenda) throw new Error("Prenda no encontrada");
 
@@ -534,7 +799,32 @@ export async function actualizarPrenda(id: string, datos: { estado?: "DISPONIBLE
     }
   }
 
-  return prisma.prenda.update({ where: { id }, data: datos });
+  const actualizada = await prisma.prenda.update({ where: { id }, data: datos });
+
+  // El historial nunca debe impedir el cambio: cualquier fallo al armarlo se ignora.
+  try {
+    const cambios: string[] = [];
+    if (datos.estado && datos.estado !== prenda.estado) {
+      cambios.push(`estado «${etiquetaEstadoPrenda(prenda.estado)}» → «${etiquetaEstadoPrenda(datos.estado)}»`);
+    }
+    if (datos.calidad && datos.calidad !== prenda.calidad) cambios.push(`calidad «${prenda.calidad}» → «${datos.calidad}»`);
+    if (cambios.length > 0) {
+      const detalle = `${prenda.nombre}: ${cambios.join("; ")}.`;
+      await registrarEventoDisfraz({ disfrazId: prenda.disfrazHogarId, tipo: "PRENDA", prendaId: id, usuarioId: actorId, detalle });
+      if (prenda.disfrazActualId !== prenda.disfrazHogarId) {
+        await registrarEventoDisfraz({
+          disfrazId: prenda.disfrazActualId,
+          tipo: "PRENDA",
+          prendaId: id,
+          usuarioId: actorId,
+          detalle: `${detalle} (prenda prestada a este disfraz)`,
+        });
+      }
+    }
+  } catch {
+    // sin historial
+  }
+  return actualizada;
 }
 
 export interface CandidatoReemplazo {

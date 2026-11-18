@@ -100,6 +100,7 @@ import { registrarEventoSeguridad } from "../../src/common/logger";
 import {
   crearSesionCheckout,
   confirmarPago,
+  obtenerBoleta,
 } from "../../src/modules/pagos/pagos.service";
 
 // ============================================================
@@ -215,7 +216,8 @@ describe("PagosService - pruebas unitarias funcionales", () => {
 
     expect(disfracesNoDisponibles).toHaveBeenCalledWith(
       ["disfraz-1"],
-      "usuario-1"
+      "usuario-1",
+      expect.objectContaining({ inicio: expect.any(Date), fin: expect.any(Date) })
     );
 
     expect(stripeMocks.crearSesion).toHaveBeenCalledTimes(1);
@@ -832,5 +834,40 @@ describe("PagosService - pruebas unitarias funcionales", () => {
     ).rejects.toBe(error);
 
     expect(stripeMocks.crearReembolso).not.toHaveBeenCalled();
+  });
+});
+
+describe("Boleta de pago (Stripe)", () => {
+  const sesion = (extra: object = {}) => ({
+    payment_status: "paid",
+    metadata: { usuarioId: "usuario-1" },
+    invoice: { invoice_pdf: "https://pay.stripe.com/invoice/x/pdf" },
+    payment_intent: { latest_charge: { receipt_url: "https://pay.stripe.com/receipts/x" } },
+    ...extra,
+  });
+
+  it("devuelve el PDF de la factura cuando existe", async () => {
+    stripeMocks.recuperarSesion.mockResolvedValue(sesion());
+    await expect(obtenerBoleta("cs_1", "usuario-1")).resolves.toEqual({ tipo: "pdf", url: "https://pay.stripe.com/invoice/x/pdf" });
+  });
+
+  it("sin factura devuelve el recibo del cobro", async () => {
+    stripeMocks.recuperarSesion.mockResolvedValue(sesion({ invoice: null }));
+    await expect(obtenerBoleta("cs_1", "usuario-1")).resolves.toEqual({ tipo: "recibo", url: "https://pay.stripe.com/receipts/x" });
+  });
+
+  it("rechaza la boleta de un pago de otro usuario", async () => {
+    stripeMocks.recuperarSesion.mockResolvedValue(sesion());
+    await expect(obtenerBoleta("cs_1", "otro")).rejects.toThrow("no corresponde a tu usuario");
+  });
+
+  it("rechaza un pago que aún no está confirmado", async () => {
+    stripeMocks.recuperarSesion.mockResolvedValue(sesion({ payment_status: "unpaid" }));
+    await expect(obtenerBoleta("cs_1", "usuario-1")).rejects.toThrow("aún no se ha confirmado");
+  });
+
+  it("avisa si Stripe todavía no generó nada", async () => {
+    stripeMocks.recuperarSesion.mockResolvedValue(sesion({ invoice: null, payment_intent: null }));
+    await expect(obtenerBoleta("cs_1", "usuario-1")).rejects.toThrow("todavía no generó la boleta");
   });
 });

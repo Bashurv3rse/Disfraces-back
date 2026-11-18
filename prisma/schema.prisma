@@ -76,6 +76,7 @@ model DisfrazFisico {
   prendasActuales Prenda[]          @relation("PrendaActual")
   alquileres      AlquilerDisfraz[]
   reservas        Reserva[]
+  eventos         EventoDisfraz[]
 
   @@index([grupoCompatibilidad])
   @@index([origen])
@@ -103,6 +104,23 @@ model Prenda {
 
   @@index([disfrazHogarId])
   @@index([disfrazActualId])
+}
+
+// Historial propio de cada disfraz: cambios que no se pueden reconstruir desde otras tablas
+// (estado manual, cambios en prendas). Los alquileres, devoluciones, préstamos y reservas
+// se leen de sus propias tablas al consultar el historial.
+model EventoDisfraz {
+  id        String   @id @default(uuid())
+  disfrazId String
+  tipo      String   // ESTADO | PRENDA
+  detalle   String
+  prendaId  String?
+  usuarioId String?  // quién hizo el cambio (administrador)
+  fecha     DateTime @default(now())
+
+  disfraz DisfrazFisico @relation(fields: [disfrazId], references: [id], onDelete: Cascade)
+
+  @@index([disfrazId, fecha])
 }
 
 // Auditoría de préstamos automáticos entre disfraces

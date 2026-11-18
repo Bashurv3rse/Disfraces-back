@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  crear, listar, obtenerUno, detalleInventario, temporadas, tipos,
+  crear, listar, obtenerUno, detalleInventario, historial, disponibilidad, aMedidaTemporales, temporadas, tipos,
   actualizarEstado, editarPrenda, candidatosPrenda, prestamoPrenda, devolverPrestamoPrenda,
 } from "./disfraces.controller";
 import { verificarToken, requiereRol } from "../auth/auth.middleware";
@@ -10,8 +10,11 @@ export const disfracesRouter = Router();
 disfracesRouter.get("/", listar);
 disfracesRouter.get("/temporadas", temporadas);
 disfracesRouter.get("/tipos", tipos);
+disfracesRouter.get("/disponibilidad", disponibilidad);
+disfracesRouter.get("/a-medida-temporales", verificarToken, requiereRol("ADMINISTRADOR"), aMedidaTemporales);
 disfracesRouter.get("/:id", obtenerUno);
 disfracesRouter.get("/:id/inventario", verificarToken, requiereRol("ADMINISTRADOR"), detalleInventario);
+disfracesRouter.get("/:id/historial", verificarToken, requiereRol("ADMINISTRADOR"), historial);
 disfracesRouter.post("/", verificarToken, requiereRol("ADMINISTRADOR"), crear);
 disfracesRouter.patch("/:id/estado-manual", verificarToken, requiereRol("ADMINISTRADOR"), actualizarEstado);
 disfracesRouter.patch("/prendas/:prendaId", verificarToken, requiereRol("ADMINISTRADOR"), editarPrenda);

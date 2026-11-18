@@ -111,6 +111,120 @@ export function listarTodos() {
   });
 }
 
+// --- Historial completo de alquileres (administrador) ---
+
+export type EstadoVisible = "PENDIENTE" | "PROXIMO" | "EN_CURSO" | "POR_DEVOLVER" | "FINALIZADO" | "CANCELADO";
+
+// Estado que entiende el administrador: combina el estado guardado con las fechas.
+export function estadoVisibleDeAlquiler(
+  a: { estado: string; fechaInicio: Date; fechaFin: Date },
+  ahora: Date = new Date()
+): EstadoVisible {
+  if (a.estado === "CANCELADO") return "CANCELADO";
+  if (a.estado === "FINALIZADO") return "FINALIZADO";
+  if (a.estado === "PENDIENTE") return "PENDIENTE";
+  const hoy = Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate());
+  if (a.fechaInicio.getTime() > hoy) return "PROXIMO";
+  if (a.fechaFin.getTime() < hoy) return "POR_DEVOLVER";
+  return "EN_CURSO";
+}
+
+// Talla de ropa o de calzado del disfraz (la más repetida entre sus prendas); null si no tiene.
+export function tallaPrincipal(prendas: { tipo: string; talla: string }[] | undefined, categoria: "ROPA" | "CALZADO"): string | null {
+  const esCalzado = (t: string) => t === "ZAPATO" || t === "TACON";
+  const esUnica = (t: string) => t === "PANUELO" || t === "ACCESORIO";
+  const tallas = (prendas ?? [])
+    .filter((p) => (categoria === "CALZADO" ? esCalzado(p.tipo) : !esCalzado(p.tipo) && !esUnica(p.tipo)))
+    .map((p) => p.talla);
+  if (tallas.length === 0) return null;
+  const cuenta = new Map<string, number>();
+  for (const t of tallas) cuenta.set(t, (cuenta.get(t) ?? 0) + 1);
+  return [...cuenta.entries()].sort((a, b) => b[1] - a[1])[0][0];
+}
+
+// Tallas de un disfraz alquilado: las de sus piezas propias (catálogo); si no tiene (a medida), las
+// de la reserva y, en última instancia, las de las piezas que tenía puestas.
+export function tallasDelDisfraz(d: {
+  prendasHogar?: { tipo: string; talla: string }[];
+  prendasActuales?: { tipo: string; talla: string }[];
+  reservas?: { tallaRopa: string | null; tallaCalzado: string | null }[];
+}): { ropa: string | null; calzado: string | null } {
+  const reserva = d.reservas?.[0];
+  return {
+    ropa: tallaPrincipal(d.prendasHogar, "ROPA") ?? reserva?.tallaRopa ?? tallaPrincipal(d.prendasActuales, "ROPA"),
+    calzado: tallaPrincipal(d.prendasHogar, "CALZADO") ?? reserva?.tallaCalzado ?? tallaPrincipal(d.prendasActuales, "CALZADO"),
+  };
+}
+
+export interface FiltrosHistorial {
+  estado?: EstadoVisible;
+  busqueda?: string; // cliente (nombre o correo) o disfraz
+}
+
+export async function historialAlquileres(filtros: FiltrosHistorial = {}) {
+  const alquileres = await prisma.alquiler.findMany({
+    include: {
+      usuario: { select: { nombre: true, email: true } },
+      disfraces: { include: { disfrazFisico: {
+            select: {
+              id: true,
+              nombre: true,
+              prendasHogar: { select: { tipo: true, talla: true } },
+              prendasActuales: { select: { tipo: true, talla: true } },
+              // Un disfraz a medida no tiene piezas propias: las tallas son las que pidió el cliente.
+              reservas: { where: { tipo: "A_MEDIDA" }, select: { tallaRopa: true, tallaCalzado: true }, orderBy: { creadoEn: "desc" }, take: 1 },
+            },
+          },
+        },
+      },
+      devolucion: { select: { fechaDevolucion: true, estado: true, garantiaEstado: true } },
+    },
+    orderBy: { creadoEn: "desc" },
+  });
+
+  const ahora = new Date();
+  const busqueda = filtros.busqueda?.trim().toLowerCase();
+  const filas = alquileres
+    .map((a: any) => {
+      const dias = Math.max(1, Math.round((a.fechaFin.getTime() - a.fechaInicio.getTime()) / 86_400_000));
+      return {
+        id: a.id,
+        cliente: { nombre: a.usuario.nombre, email: a.usuario.email },
+        disfraces: a.disfraces.map((d: any) => ({
+          id: d.disfrazFisico.id,
+          nombre: d.disfrazFisico.nombre,
+          tallaRopa: tallasDelDisfraz(d.disfrazFisico).ropa,
+          tallaCalzado: tallasDelDisfraz(d.disfrazFisico).calzado,
+        })),
+        fechaInicio: a.fechaInicio,
+        fechaFin: a.fechaFin,
+        dias,
+        montoTotal: Number(a.montoTotal),
+        descuento: Number(a.descuento),
+        montoGarantia: Number(a.montoGarantia),
+        estado: a.estado as string,
+        estadoVisible: estadoVisibleDeAlquiler(a, ahora),
+        devolucion: a.devolucion ?? null,
+        creadoEn: a.creadoEn,
+      };
+    })
+    .filter((f) => !filtros.estado || f.estadoVisible === filtros.estado)
+    .filter(
+      (f) =>
+        !busqueda ||
+        f.cliente.nombre.toLowerCase().includes(busqueda) ||
+        f.cliente.email.toLowerCase().includes(busqueda) ||
+        f.disfraces.some((d: { nombre: string }) => d.nombre.toLowerCase().includes(busqueda))
+    );
+
+  const conteo: Record<string, number> = {};
+  for (const f of filas) conteo[f.estadoVisible] = (conteo[f.estadoVisible] ?? 0) + 1;
+  // El total solo suma alquileres no cancelados.
+  const totalIngresos = filas.filter((f) => f.estado !== "CANCELADO").reduce((acc, f) => acc + f.montoTotal, 0);
+
+  return { alquileres: filas, conteo, totalIngresos };
+}
+
 export async function resumenAdmin() {
   const inicioMes = new Date();
   inicioMes.setDate(1);
