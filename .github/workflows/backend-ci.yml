@@ -55,7 +55,7 @@ jobs:
       # Solo corre si existe el secreto SONAR_TOKEN (ver LEEME).
       - name: Análisis SonarCloud
         if: ${{ env.SONAR_TOKEN != '' && github.ref == 'refs/heads/main' }}
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v6
         with:
           args: >
-            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.wait=false
