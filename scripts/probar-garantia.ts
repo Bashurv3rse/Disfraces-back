@@ -143,7 +143,7 @@ async function main() {
       where: { id: { in: alquileres } },
       select: { id: true, devolucion: { select: { garantiaEstado: true, garantiaMotivo: true } } },
     });
-    const estados = propios.map((p) => p.devolucion?.garantiaEstado).sort();
+    const estados = propios.map((p) => p.devolucion?.garantiaEstado).sort((a, b) => String(a).localeCompare(String(b)));
     comprobar("ambos alquileres muestran su garantía resuelta", estados.join(",") === "DEVUELTA,RETENIDA", estados.join(","));
   } finally {
     if (prendasTocadas.length > 0) {

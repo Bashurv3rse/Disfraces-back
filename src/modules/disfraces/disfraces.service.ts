@@ -13,13 +13,28 @@ export class ErrorDisfraz extends Error {
   }
 }
 
+// Quita los guiones del inicio y del final sin usar una expresión regular con retroceso.
+function recortarGuiones(texto: string): string {
+  let inicio = 0;
+  let fin = texto.length;
+  while (inicio < fin && texto[inicio] === "-") inicio++;
+  while (fin > inicio && texto[fin - 1] === "-") fin--;
+  return texto.slice(inicio, fin);
+}
+
+// Quita el sufijo " #N" del nombre ("Pirata #2" -> "Pirata").
+function sinSufijoNumerado(nombre: string): string {
+  return nombre.trim().replace(/#\d+$/, "").trim();
+}
+
 function aSlug(texto: string): string {
-  return texto
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return recortarGuiones(
+    texto
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-"),
+  );
 }
 
 export async function crearDisfraz(datos: CrearDisfrazInput) {
@@ -32,7 +47,7 @@ export async function crearDisfraz(datos: CrearDisfrazInput) {
   }
 
   // Familia: la indicada, o el nombre sin el sufijo "#N".
-  const familiaSolicitada = datos.familia ?? (datos.nombre.replace(/\s*#\d+\s*$/, "").trim() || datos.nombre);
+  const familiaSolicitada = datos.familia ?? (sinSufijoNumerado(datos.nombre) || datos.nombre);
 
   // Si la familia ya existe, el nuevo disfraz respeta su escritura y su grupo.
   const hermano = await prisma.disfrazFisico.findFirst({
@@ -297,7 +312,7 @@ export async function disponibilidadDeDisfraces(ids: string[], rango: RangoFecha
   const firma = (d: any) =>
     (d.prendasHogar as { tipo: string; talla: string }[])
       .map((p) => `${p.tipo}:${p.talla}`)
-      .sort()
+      .sort((a, b) => a.localeCompare(b))
       .join("|");
   const resultado = disfraces.map((d: any) => {
     const estado = calcularEstadoEnRango(d, rango, tramos, reservados);

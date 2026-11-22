@@ -45,7 +45,7 @@ const casi = (a: number, b: number) => Math.abs(a - b) < 0.005;
 // «Huella» de la ubicación de todas las piezas: si dos huellas son iguales, ninguna pieza se movió.
 async function huella(): Promise<string> {
   const prendas = await prisma.prenda.findMany({ select: { id: true, disfrazActualId: true }, orderBy: { id: "asc" } });
-  return createHash("sha1")
+  return createHash("sha256")
     .update(prendas.map((p) => `${p.id}:${p.disfrazActualId}`).join("|"))
     .digest("hex");
 }

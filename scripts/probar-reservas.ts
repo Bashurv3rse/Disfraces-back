@@ -32,7 +32,7 @@ async function huella(): Promise<string> {
     select: { id: true, disfrazActualId: true },
     orderBy: { id: "asc" },
   });
-  return createHash("sha1")
+  return createHash("sha256")
     .update(prendas.map((p) => `${p.id}:${p.disfrazActualId}`).join("|"))
     .digest("hex");
 }

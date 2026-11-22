@@ -14,7 +14,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-disfraces}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clave-local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env.docker}
       POSTGRES_DB: ${POSTGRES_DB:-disfraces_db}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -32,7 +32,7 @@ services:
       target: build
     command: ["npx", "prisma", "migrate", "deploy"]
     environment: &entorno-bd
-      DATABASE_URL: postgresql://${POSTGRES_USER:-disfraces}:${POSTGRES_PASSWORD:-clave-local}@db:5432/${POSTGRES_DB:-disfraces_db}?connection_limit=10
+      DATABASE_URL: postgresql://${POSTGRES_USER:-disfraces}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env.docker}@db:5432/${POSTGRES_DB:-disfraces_db}?connection_limit=10
     depends_on:
       db:
         condition: service_healthy
