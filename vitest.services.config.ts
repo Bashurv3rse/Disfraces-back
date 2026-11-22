@@ -11,9 +11,14 @@ export default defineConfig({
     coverage: {
       provider: "v8",
 
-      // Medimos únicamente la capa de lógica de negocio.
+      // Medimos únicamente la capa de lógica de negocio (servicios y sus utilidades).
       include: [
         "src/**/*.service.ts",
+        "src/modules/a-medida/reservas.base.ts",
+        "src/modules/disfraces/rango.ts",
+        "src/common/health.ts",
+        "src/common/tallas.ts",
+        "src/common/texto.ts",
       ],
 
       exclude: [

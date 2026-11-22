@@ -61,5 +61,5 @@ jobs:
             -Dsonar.qualitygate.wait=false
             -Dsonar.sources=src
             -Dsonar.tests=tests
-            -Dsonar.coverage.inclusions=src/**/*.service.ts
+            -Dsonar.coverage.exclusions=src/main.ts,src/config/**,src/common/logger.ts,src/common/express.d.ts,**/*.controller.ts,**/*.routes.ts,**/*.schema.ts,**/*.middleware.ts
             -Dsonar.exclusions=**/node_modules/**,dist/**,coverage/**,reports/**,prisma/**,scripts/**,features/**,**/*.d.ts
