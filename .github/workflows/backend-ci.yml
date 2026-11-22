@@ -55,7 +55,11 @@ jobs:
       # Solo corre si existe el secreto SONAR_TOKEN (ver LEEME).
       - name: Análisis SonarCloud
         if: ${{ env.SONAR_TOKEN != '' && github.ref == 'refs/heads/main' }}
-        uses: SonarSource/sonarqube-scan-action@v6
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602
         with:
           args: >
             -Dsonar.qualitygate.wait=false
+            -Dsonar.sources=src
+            -Dsonar.tests=tests
+            -Dsonar.coverage.inclusions=src/**/*.service.ts
+            -Dsonar.exclusions=**/node_modules/**,dist/**,coverage/**,reports/**,prisma/**,scripts/**,features/**,**/*.d.ts
