@@ -24,7 +24,17 @@ export default defineConfig({
         "text",
         "html",
         "json-summary",
+        "lcov", // lo lee SonarCloud
       ],
+
+      // Puerta de calidad: si la cobertura de la lógica de negocio baja de estos valores,
+      // `npm run test:coverage:services` falla y la CI también (S30: mínimo 80 % en servicios).
+      thresholds: {
+        lines: 80,
+        functions: 75,
+        branches: 70,
+        statements: 80,
+      },
 
       // Reporte separado para no sobrescribir la cobertura global.
       reportsDirectory: "./coverage/services",

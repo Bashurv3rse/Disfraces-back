@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 .env.test
+.env.docker
 
 coverage/
 reports/

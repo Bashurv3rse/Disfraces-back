@@ -4,10 +4,20 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
+import { crearManejadorListo } from "./common/health";
+import { prisma } from "./config/prisma";
 
 dotenv.config();
 
 export const app = express();
+
+// Detrás de nginx o de un balanceador la IP real llega en X-Forwarded-For. Sin esto, el límite de
+// intentos de login se contaría por la IP del proxy (todos los usuarios juntos). Se activa solo si
+// TRUST_PROXY está definido (por ejemplo 1 = un proxy delante), así el comportamiento actual no cambia.
+if (process.env.TRUST_PROXY) {
+  const valor = process.env.TRUST_PROXY;
+  app.set("trust proxy", /^\d+$/.test(valor) ? Number(valor) : valor);
+}
 
 // --- Cabeceras de seguridad HTTP (mitiga Clickjacking, MIME-sniffing, XSS) ---
 app.use(helmet());
@@ -100,6 +110,9 @@ app.get("/health", (_req, res) => {
   });
 });
 
+// Readiness: además de estar vivo, comprueba que la base de datos responda (200 o 503).
+app.get("/health/ready", crearManejadorListo(prisma));
+
 import { authRouter } from "./modules/auth/auth.routes";
 import { proveedoresRouter } from "./modules/proveedores/proveedores.routes";
 import { alquileresRouter } from "./modules/alquileres/alquileres.routes";
@@ -135,7 +148,9 @@ app.use("/api/ajuste-talla", limitadorAMedidaConsulta, ajusteTallaRouter);
 const PORT = Number(process.env.PORT || 3000);
 
 if (require.main === module) {
-  app.listen(PORT, "127.0.0.1", () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  // Por defecto solo escucha en local (nginx le pasa el tráfico). En Docker se define HOST=0.0.0.0.
+  const HOST = process.env.HOST || "127.0.0.1";
+  app.listen(PORT, HOST, () => {
+    console.log(`Servidor corriendo en http://${HOST}:${PORT}`);
   });
 }

@@ -164,45 +164,60 @@ async function reembolsarPorReservaPerdida(
   );
 }
 
-export async function confirmarPago(sessionId: string, usuarioId: string) {
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
+const INCLUIR_ALQUILER = { disfraces: { include: { disfrazFisico: true } } } as const;
 
+// El pago debe estar cobrado y pertenecer al usuario autenticado (nunca confiar en el session_id sin más).
+function validarSesionPagada(session: Stripe.Checkout.Session, usuarioId: string) {
   if (session.payment_status !== "paid") {
     throw new Error("El pago aún no se ha confirmado con Stripe");
   }
-  // Nunca confiar en el session_id sin más: debe pertenecer al usuario autenticado.
   if (session.metadata?.usuarioId !== usuarioId) {
     throw new Error("Esta sesión de pago no corresponde a tu usuario");
   }
+}
+
+// Los montos guardados son los de la cotización original, y deben coincidir con lo que
+// Stripe realmente cobró. Si no, algo se alteró y no se crea el alquiler.
+// Sin esos montos (sesión creada antes de existir los descuentos), el alquiler recalcula su precio.
+function preciosDeLaSesion(session: Stripe.Checkout.Session, meta: Stripe.Metadata): PreciosAlquiler | undefined {
+  if (!meta.montoTotalCent || !meta.garantiaCent) return undefined;
+  const totalCent = Number(meta.montoTotalCent);
+  const garantiaCent = Number(meta.garantiaCent);
+  if (session.amount_total !== totalCent + garantiaCent) {
+    throw new Error("El monto cobrado no coincide con la cotización de esta reserva. Contacta a la tienda.");
+  }
+  return {
+    montoTotal: totalCent / 100,
+    montoGarantia: garantiaCent / 100,
+    descuento: Number(meta.descuentoCent || 0) / 100,
+    detalleDescuento: meta.detalleDescuento || null,
+  };
+}
+
+// Condición de carrera: dos peticiones casi simultáneas (típico de React StrictMode en
+// desarrollo) pasaron el chequeo de «no existe» a la vez. La primera ya lo creó.
+function esAlquilerDuplicado(error: any): boolean {
+  return error.code === "P2002" && !!error.meta?.target?.includes("stripeSessionId");
+}
+
+// La reserva se perdió justo entre la comprobación y la transacción (o su disfraz
+// temporal ya se borró): se reembolsa igual que cuando se detecta antes.
+function esReservaPerdida(error: unknown): boolean {
+  return error instanceof ReservaPerdida || (error instanceof ErrorCotizacion && error.estado === 404);
+}
+
+export async function confirmarPago(sessionId: string, usuarioId: string) {
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  validarSesionPagada(session, usuarioId);
 
   // Idempotencia: si el cliente recarga la página de éxito, no se duplica el alquiler.
-  const existente = await prisma.alquiler.findUnique({
-    where: { stripeSessionId: sessionId },
-    include: { disfraces: { include: { disfrazFisico: true } } },
-  });
+  const existente = await prisma.alquiler.findUnique({ where: { stripeSessionId: sessionId }, include: INCLUIR_ALQUILER });
   if (existente) return existente;
 
   const meta = session.metadata!;
   const disfrazIds: string[] = JSON.parse(meta.disfraces);
   const reservasIds: string[] = meta.reservasIds ? JSON.parse(meta.reservasIds) : [];
-
-  // Los montos guardados son los de la cotización original, y deben coincidir con lo que
-  // Stripe realmente cobró. Si no, algo se alteró y no se crea el alquiler.
-  let precios: PreciosAlquiler | undefined;
-  if (meta.montoTotalCent && meta.garantiaCent) {
-    const totalCent = Number(meta.montoTotalCent);
-    const garantiaCent = Number(meta.garantiaCent);
-    if (session.amount_total !== totalCent + garantiaCent) {
-      throw new Error("El monto cobrado no coincide con la cotización de esta reserva. Contacta a la tienda.");
-    }
-    precios = {
-      montoTotal: totalCent / 100,
-      montoGarantia: garantiaCent / 100,
-      descuento: Number(meta.descuentoCent || 0) / 100,
-      detalleDescuento: meta.detalleDescuento || null,
-    };
-  }
-  // Sin esos montos (sesión creada antes de existir los descuentos), el alquiler recalcula su precio.
+  const precios = preciosDeLaSesion(session, meta);
 
   // Pago que llega tarde: las piezas ya volvieron al almacén.
   if (reservasIds.length > 0 && (await hayReservaPerdida(reservasIds, usuarioId))) {
@@ -212,32 +227,16 @@ export async function confirmarPago(sessionId: string, usuarioId: string) {
   try {
     // El alquiler y la confirmación de las reservas ocurren en una sola transacción.
     return await crearAlquiler(
-      {
-        fechaInicio: meta.fechaInicio,
-        fechaFin: meta.fechaFin,
-        evento: meta.evento || undefined,
-        disfraces: disfrazIds,
-      },
+      { fechaInicio: meta.fechaInicio, fechaFin: meta.fechaFin, evento: meta.evento || undefined, disfraces: disfrazIds },
       usuarioId,
       { stripeSessionId: sessionId, precios, reservasIds }
     );
   } catch (error: any) {
-    // Condición de carrera: dos peticiones casi simultáneas (típico de React StrictMode en
-    // desarrollo) pasaron el chequeo de «no existe» a la vez. La primera ya lo creó.
-    if (error.code === "P2002" && error.meta?.target?.includes("stripeSessionId")) {
-      const yaCreado = await prisma.alquiler.findUnique({
-        where: { stripeSessionId: sessionId },
-        include: { disfraces: { include: { disfrazFisico: true } } },
-      });
+    if (esAlquilerDuplicado(error)) {
+      const yaCreado = await prisma.alquiler.findUnique({ where: { stripeSessionId: sessionId }, include: INCLUIR_ALQUILER });
       if (yaCreado) return yaCreado;
     }
-
-    // La reserva se perdió justo entre la comprobación y la transacción (o su disfraz
-    // temporal ya se borró): se reembolsa igual que arriba.
-    if (
-      reservasIds.length > 0 &&
-      (error instanceof ReservaPerdida || (error instanceof ErrorCotizacion && error.estado === 404))
-    ) {
+    if (reservasIds.length > 0 && esReservaPerdida(error)) {
       return reembolsarPorReservaPerdida(session, reservasIds, usuarioId);
     }
     throw error;

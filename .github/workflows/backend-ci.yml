@@ -7,12 +7,22 @@ on:
 
 jobs:
   backend:
-    name: Backend — typecheck y build
+    name: Backend — build, pruebas, cobertura y SonarCloud
     runs-on: ubuntu-latest
+
+    env:
+      # Valores de relleno solo para CI: las pruebas unitarias no usan base de datos real.
+      DATABASE_URL: "postgresql://usuario:clave@localhost:5432/disfraz_test_db"
+      JWT_SECRET: "ci-solo-pruebas"
+      JWT_REFRESH_SECRET: "ci-solo-pruebas-refresh"
+      STRIPE_SECRET_KEY: "sk_test_ci_relleno"
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
       - name: Descargar código
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # SonarCloud necesita el historial para detectar código nuevo
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
@@ -26,8 +36,26 @@ jobs:
 
       - name: Generar cliente de Prisma
         run: npm run prisma:generate
-        env:
-          DATABASE_URL: "postgresql://usuario:clave@localhost:5432/disfraz_test_db"
 
       - name: Verificar tipos y compilar
         run: npm run build
+
+      # Falla si la cobertura de los servicios baja del umbral (vitest.services.config.ts).
+      - name: Pruebas unitarias con puerta de cobertura
+        run: npm run test:coverage:services
+
+      - name: Guardar reporte de cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-backend
+          path: coverage/services
+          if-no-files-found: ignore
+
+      # Solo corre si existe el secreto SONAR_TOKEN (ver LEEME).
+      - name: Análisis SonarCloud
+        if: ${{ env.SONAR_TOKEN != '' && github.ref == 'refs/heads/main' }}
+        uses: SonarSource/sonarqube-scan-action@v5
+        with:
+          args: >
+            -Dsonar.qualitygate.wait=true

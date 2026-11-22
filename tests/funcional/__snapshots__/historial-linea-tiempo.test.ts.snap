@@ -1,0 +1,164 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`historial del disfraz: línea de tiempo (PF-HIS) > arma la línea de tiempo completa, ordenada por fecha 1`] = `
+{
+  "disfraz": {
+    "familia": "Batman",
+    "id": "d1",
+    "nombre": "Batman #1",
+    "tipoDisfraz": "HEROE",
+  },
+  "eventos": [
+    {
+      "categoria": "REGISTRO",
+      "detalle": "Se registró «Batman #1» (HEROE, Halloween) con 2 prendas: Capa (talla M), Botas (talla 40). Tarifa: S/ 50.00 por día.",
+      "fecha": "2026-09-01T10:00:00.000Z",
+      "titulo": "Disfraz registrado",
+    },
+    {
+      "categoria": "ESTADO",
+      "detalle": "Pasó a reparación",
+      "fecha": "2026-09-05T12:00:00.000Z",
+      "titulo": "Cambio de estado",
+    },
+    {
+      "categoria": "PRENDA",
+      "detalle": "Se cambió el color de la capa",
+      "fecha": "2026-09-06T12:00:00.000Z",
+      "titulo": "Prenda modificada",
+    },
+    {
+      "categoria": "PRENDA",
+      "detalle": "Antifaz (negro, talla única) se agregó al disfraz.",
+      "fecha": "2026-09-20T09:00:00.000Z",
+      "titulo": "Prenda incorporada",
+    },
+    {
+      "categoria": "ALQUILER",
+      "detalle": "Ana (ana@x.com). Del 05/10/2026 al 08/10/2026 (3 días), tarifa de lista S/ 150.00 (S/ 50.00 por día). Total del alquiler: S/ 150.00. Estado del alquiler: finalizado.",
+      "fecha": "2026-10-01T09:00:00.000Z",
+      "titulo": "Alquilado por Ana",
+    },
+    {
+      "categoria": "DEVOLUCION",
+      "detalle": "Devolución con observaciones. Garantía: retenida (Prenda dañada). Observaciones: Llegó tarde",
+      "fecha": "2026-10-10T15:00:00.000Z",
+      "titulo": "Devuelto por Ana",
+    },
+    {
+      "categoria": "DISPONIBILIDAD",
+      "detalle": "Tras la devolución el disfraz pasa 3 días hábiles en lavado, planchado y empaquetado.",
+      "fecha": "2026-10-10T15:00:00.000Z",
+      "titulo": "Entra en lavado",
+    },
+    {
+      "categoria": "INCIDENCIA",
+      "detalle": "Botas: el cliente la reportó como dañada. Revisión del administrador: dañada. Observación: se rompió la suela",
+      "fecha": "2026-10-10T15:00:00.000Z",
+      "titulo": "Prenda dañada",
+    },
+    {
+      "categoria": "INCIDENCIA",
+      "detalle": "Antifaz: el cliente la reportó como faltante. Revisión del administrador: faltante.",
+      "fecha": "2026-10-10T15:00:00.000Z",
+      "titulo": "Prenda faltante",
+    },
+    {
+      "categoria": "DISPONIBILIDAD",
+      "detalle": "El disfraz vuelve a estar disponible para alquilar.",
+      "fecha": "2026-10-14T00:00:00.000Z",
+      "titulo": "Termina el lavado",
+    },
+    {
+      "categoria": "PRESTAMO",
+      "detalle": "Capa volvió a su lugar. Préstamo devuelto por arreglo.",
+      "fecha": "2026-10-20T10:00:00.000Z",
+      "titulo": "Prenda devuelta a este disfraz",
+    },
+    {
+      "categoria": "PRESTAMO",
+      "detalle": "Capa volvió a su lugar. Préstamo devuelto por arreglo.",
+      "fecha": "2026-10-21T10:00:00.000Z",
+      "titulo": "Prenda devuelta a su disfraz de origen",
+    },
+    {
+      "categoria": "PRESTAMO",
+      "detalle": "Botas llegó desde «Superman #3». Falta de pieza.",
+      "fecha": "2026-10-22T10:00:00.000Z",
+      "titulo": "Prenda recibida en préstamo",
+    },
+    {
+      "categoria": "PRESTAMO",
+      "detalle": "Botas pasó a «otro disfraz». Falta de pieza.",
+      "fecha": "2026-10-23T10:00:00.000Z",
+      "titulo": "Prenda prestada a otro disfraz",
+    },
+    {
+      "categoria": "DISPONIBILIDAD",
+      "detalle": "Un cliente apartó piezas del disfraz para ajustarlas a su talla; mientras dura la reserva no se puede alquilar a otra persona.",
+      "fecha": "2026-10-25T10:00:00.000Z",
+      "titulo": "Reserva por ajuste de talla",
+    },
+    {
+      "categoria": "DISPONIBILIDAD",
+      "detalle": "La reserva se convirtió en un alquiler pagado.",
+      "fecha": "2026-10-25T10:05:00.000Z",
+      "titulo": "Ajuste de talla confirmado",
+    },
+    {
+      "categoria": "DISPONIBILIDAD",
+      "detalle": "Un cliente apartó piezas del disfraz para ajustarlas a su talla; mientras dura la reserva no se puede alquilar a otra persona.",
+      "fecha": "2026-10-26T10:00:00.000Z",
+      "titulo": "Reserva por ajuste de talla",
+    },
+    {
+      "categoria": "DISPONIBILIDAD",
+      "detalle": "La reserva venció o se canceló y el disfraz volvió a estar disponible.",
+      "fecha": "2026-10-26T10:20:00.000Z",
+      "titulo": "Reserva liberada",
+    },
+    {
+      "categoria": "DISPONIBILIDAD",
+      "detalle": "Un cliente apartó piezas del disfraz para ajustarlas a su talla; mientras dura la reserva no se puede alquilar a otra persona.",
+      "fecha": "2026-10-27T10:00:00.000Z",
+      "titulo": "Reserva por ajuste de talla",
+    },
+    {
+      "categoria": "ALQUILER",
+      "detalle": "Luis (luis@x.com). Del 30/11/2026 al 30/11/2026 (1 día), tarifa de lista S/ 50.00 (S/ 50.00 por día). Total del alquiler: S/ 50.00. Estado del alquiler: activo.",
+      "fecha": "2026-11-01T09:00:00.000Z",
+      "titulo": "Alquilado por Luis",
+    },
+    {
+      "categoria": "ALQUILER",
+      "detalle": "Eva (eva@x.com). Del 10/01/2027 al 12/01/2027 (2 días), tarifa de lista S/ 100.00 (S/ 50.00 por día). Total del alquiler: S/ 100.00. Estado del alquiler: finalizado.",
+      "fecha": "2027-01-04T09:00:00.000Z",
+      "titulo": "Alquilado por Eva",
+    },
+    {
+      "categoria": "DEVOLUCION",
+      "detalle": "Devolución completa. Garantía: retenida.",
+      "fecha": "2027-01-12T15:00:00.000Z",
+      "titulo": "Devuelto por Eva",
+    },
+    {
+      "categoria": "DISPONIBILIDAD",
+      "detalle": "Tras la devolución el disfraz pasa 3 días hábiles en lavado, planchado y empaquetado.",
+      "fecha": "2027-01-12T15:00:00.000Z",
+      "titulo": "Entra en lavado",
+    },
+    {
+      "categoria": "INCIDENCIA",
+      "detalle": "Botas: el cliente la reportó como dañada. Revisión del administrador: buen estado.",
+      "fecha": "2027-01-12T15:00:00.000Z",
+      "titulo": "Prenda dañada",
+    },
+    {
+      "categoria": "INCIDENCIA",
+      "detalle": "Antifaz: el cliente la reportó como faltante. Revisión del administrador: faltante.",
+      "fecha": "2027-01-12T15:00:00.000Z",
+      "titulo": "Prenda faltante",
+    },
+  ],
+}
+`;

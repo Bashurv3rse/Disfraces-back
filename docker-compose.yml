@@ -1,0 +1,92 @@
+# Entorno local con Docker: base de datos + backend (escalable) + balanceador nginx.
+#
+#   1 réplica :  docker compose --env-file .env.docker up --build -d
+#   3 réplicas:  docker compose --env-file .env.docker up --build -d --scale backend=3
+#   datos demo:  docker compose --env-file .env.docker --profile semilla run --rm semilla
+#
+# La API queda en http://localhost:8080 (nginx reparte el tráfico entre las réplicas).
+# Pensado para demostrar portabilidad y escalado horizontal en tu PC; NO para la VM de 1 GB.
+
+name: disfracespro
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-disfraces}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clave-local}
+      POSTGRES_DB: ${POSTGRES_DB:-disfraces_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Aplica las migraciones una sola vez y termina.
+  migrar:
+    build:
+      context: .
+      target: build
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment: &entorno-bd
+      DATABASE_URL: postgresql://${POSTGRES_USER:-disfraces}:${POSTGRES_PASSWORD:-clave-local}@db:5432/${POSTGRES_DB:-disfraces_db}?connection_limit=10
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  # Datos de demostración (BORRA los datos de prueba existentes). Solo con --profile semilla.
+  semilla:
+    build:
+      context: .
+      target: build
+    command: ["npx", "prisma", "db", "seed"]
+    environment: *entorno-bd
+    depends_on:
+      migrar:
+        condition: service_completed_successfully
+    profiles: ["semilla"]
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      target: runtime
+    environment:
+      <<: *entorno-bd
+      PORT: "3000"
+      HOST: 0.0.0.0
+      TRUST_PROXY: "1" # hay un proxy (nginx) delante: usar la IP real del cliente
+      JWT_SECRET: ${JWT_SECRET:-solo-local-1}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-solo-local-2}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_relleno}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    depends_on:
+      migrar:
+        condition: service_completed_successfully
+    expose:
+      - "3000"
+    # Límites parecidos a una VM pequeña: así se ve cuándo satura una réplica y cuánto ayuda escalar.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    restart: unless-stopped
+
+  lb:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:

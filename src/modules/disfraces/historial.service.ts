@@ -97,7 +97,14 @@ function liberacionLavado(desde: Date): Date {
 // Línea de tiempo del disfraz: alta, cambios de estado, prendas, préstamos, alquileres,
 // devoluciones, incidencias y cambios de disponibilidad. Solo para los disfraces del catálogo
 // principal (no para el almacén ni los disfraces a medida). Devuelve null si no existe.
-export async function obtenerHistorialDisfraz(id: string) {
+type Agregar = (cuando: Date, categoria: CategoriaEvento, titulo: string, detalle: string) => void;
+
+// Cada bloque de la línea de tiempo vive en su propia función: así cada una hace una sola
+// cosa, se puede probar por separado y agregar un tipo de evento nuevo no toca a las demás.
+
+const plural = (n: number, singular: string, pluralTxt: string) => (n === 1 ? singular : pluralTxt);
+
+async function cargarDatos(id: string) {
   const disfraz = await prisma.disfrazFisico.findUnique({
     where: { id },
     include: { prendasHogar: { select: { id: true, nombre: true, tipo: true, color: true, talla: true, creadoEn: true } } },
@@ -130,112 +137,148 @@ export async function obtenerHistorialDisfraz(id: string) {
     }),
     prisma.reserva.findMany({ where: { disfrazFisicoId: id, tipo: "AJUSTE_TALLA" } }),
   ]);
+  return { disfraz, registrados, alquileres, sustituciones, reservas };
+}
 
-  // Nombres de los otros disfraces que intervinieron en préstamos.
+type Datos = NonNullable<Awaited<ReturnType<typeof cargarDatos>>>;
+
+// Nombres de los otros disfraces que intervinieron en préstamos.
+async function nombresDeOtrosDisfraces(id: string, sustituciones: Datos["sustituciones"]) {
   const otrosIds = [
     ...new Set(sustituciones.flatMap((s) => [s.disfrazOrigenId, s.disfrazDestinoId]).filter((x) => x !== id)),
   ];
   const nombres = new Map<string, string>();
-  if (otrosIds.length > 0) {
-    const filas = await prisma.disfrazFisico.findMany({ where: { id: { in: otrosIds } }, select: { id: true, nombre: true } });
-    for (const f of filas) nombres.set(f.id, f.nombre);
-  }
-  const nombreDe = (x: string) => nombres.get(x) ?? "otro disfraz";
+  if (otrosIds.length === 0) return nombres;
+  const filas = await prisma.disfrazFisico.findMany({ where: { id: { in: otrosIds } }, select: { id: true, nombre: true } });
+  for (const f of filas) nombres.set(f.id, f.nombre);
+  return nombres;
+}
 
-  const eventos: { cuando: Date; e: Omit<EventoHistorial, "fecha"> }[] = [];
-  const agregar = (cuando: Date, categoria: CategoriaEvento, titulo: string, detalle: string) =>
-    eventos.push({ cuando, e: { categoria, titulo, detalle } });
-
-  // Alta y prendas incorporadas después del alta.
+// Alta y prendas incorporadas después del alta.
+function eventosDeAlta(disfraz: Datos["disfraz"], agregar: Agregar) {
   const alta = disfraz.creadoEn;
   const iniciales = disfraz.prendasHogar.filter((p) => p.creadoEn.getTime() - alta.getTime() < 60_000);
+  const lista = iniciales.map((p) => `${p.nombre} (talla ${p.talla})`).join(", ");
   agregar(
     alta,
     "REGISTRO",
     "Disfraz registrado",
-    `Se registró «${disfraz.nombre}» (${disfraz.tipoDisfraz}, ${disfraz.temporadaEvento}) con ${iniciales.length} prenda${iniciales.length === 1 ? "" : "s"}: ${iniciales
-      .map((p) => `${p.nombre} (talla ${p.talla})`)
-      .join(", ")}. Tarifa: ${soles(Number(disfraz.precioAlquiler))} por día.`
+    `Se registró «${disfraz.nombre}» (${disfraz.tipoDisfraz}, ${disfraz.temporadaEvento}) con ${iniciales.length} ${plural(iniciales.length, "prenda", "prendas")}: ${lista}. Tarifa: ${soles(Number(disfraz.precioAlquiler))} por día.`
   );
   for (const p of disfraz.prendasHogar.filter((x) => !iniciales.includes(x))) {
     agregar(p.creadoEn, "PRENDA", "Prenda incorporada", `${p.nombre} (${p.color}, talla ${p.talla}) se agregó al disfraz.`);
   }
+}
 
-  // Cambios guardados al momento de hacerlos (estado manual, cambios en prendas).
+// Cambios guardados al momento de hacerlos (estado manual, cambios en prendas).
+function eventosRegistrados(registrados: Datos["registrados"], agregar: Agregar) {
   for (const r of registrados) {
-    agregar(r.fecha, r.tipo === "ESTADO" ? "ESTADO" : "PRENDA", r.tipo === "ESTADO" ? "Cambio de estado" : "Prenda modificada", r.detalle);
+    const esEstado = r.tipo === "ESTADO";
+    agregar(r.fecha, esEstado ? "ESTADO" : "PRENDA", esEstado ? "Cambio de estado" : "Prenda modificada", r.detalle);
   }
+}
 
-  // Alquileres, devoluciones, lavado e incidencias.
-  const ahora = new Date();
+const ETIQUETA_REVISION: Record<string, string> = { BUEN_ESTADO: "buen estado", DANADA: "dañada" };
+
+function textoRevision(estadoAdmin: string | null | undefined): string {
+  if (!estadoAdmin) return " Pendiente de revisión del administrador.";
+  return ` Revisión del administrador: ${ETIQUETA_REVISION[estadoAdmin] ?? "faltante"}.`;
+}
+
+type Devolucion = NonNullable<Datos["alquileres"][number]["alquiler"]["devolucion"]>;
+
+function eventosDeIncidencias(id: string, dev: Devolucion, agregar: Agregar) {
+  for (const dp of dev.prendas) {
+    if (dp.estadoPrenda === "BUEN_ESTADO") continue;
+    if (dp.prenda.disfrazHogarId !== id && dp.prenda.disfrazActualId !== id) continue;
+    const danada = dp.estadoPrenda === "DANADA";
+    const observacion = dp.observacion ? ` Observación: ${dp.observacion}` : "";
+    agregar(
+      dev.creadoEn,
+      "INCIDENCIA",
+      danada ? "Prenda dañada" : "Prenda faltante",
+      `${dp.prenda.nombre}: el cliente la reportó como ${danada ? "dañada" : "faltante"}.${textoRevision(dp.estadoAdmin)}${observacion}`
+    );
+  }
+}
+
+function eventosDeDevolucion(id: string, nombre: string, dev: Devolucion, ahora: Date, agregar: Agregar) {
+  const motivo = dev.garantiaMotivo ? ` (${dev.garantiaMotivo})` : "";
+  const observaciones = dev.observaciones ? ` Observaciones: ${dev.observaciones}` : "";
+  agregar(
+    dev.fechaDevolucion,
+    "DEVOLUCION",
+    `Devuelto por ${nombre}`,
+    `Devolución ${dev.estado.toLowerCase().replace("_", " ")}. Garantía: ${dev.garantiaEstado.toLowerCase()}${motivo}.${observaciones}`
+  );
+  agregar(dev.creadoEn, "DISPONIBILIDAD", "Entra en lavado", "Tras la devolución el disfraz pasa 3 días hábiles en lavado, planchado y empaquetado.");
+  const fin = liberacionLavado(dev.creadoEn);
+  if (fin <= ahora) agregar(fin, "DISPONIBILIDAD", "Termina el lavado", "El disfraz vuelve a estar disponible para alquilar.");
+  eventosDeIncidencias(id, dev, agregar);
+}
+
+// Alquileres, devoluciones, lavado e incidencias.
+function eventosDeAlquileres(id: string, alquileres: Datos["alquileres"], ahora: Date, agregar: Agregar) {
   for (const ad of alquileres) {
     const a = ad.alquiler;
-    const cliente = `${a.usuario.nombre} (${a.usuario.email})`;
     const dias = diasEntre(a.fechaInicio, a.fechaFin);
     const tarifa = Number(ad.precioUnitario) * dias;
     agregar(
       a.creadoEn,
       "ALQUILER",
       `Alquilado por ${a.usuario.nombre}`,
-      `${cliente}. Del ${fechaCorta(a.fechaInicio)} al ${fechaCorta(a.fechaFin)} (${dias} día${dias === 1 ? "" : "s"}), ` +
+      `${a.usuario.nombre} (${a.usuario.email}). Del ${fechaCorta(a.fechaInicio)} al ${fechaCorta(a.fechaFin)} (${dias} ${plural(dias, "día", "días")}), ` +
         `tarifa de lista ${soles(tarifa)} (${soles(Number(ad.precioUnitario))} por día). ` +
         `Total del alquiler: ${soles(Number(a.montoTotal))}. Estado del alquiler: ${a.estado.toLowerCase()}.`
     );
-
-    const dev = a.devolucion;
-    if (!dev) continue;
-    agregar(
-      dev.fechaDevolucion,
-      "DEVOLUCION",
-      `Devuelto por ${a.usuario.nombre}`,
-      `Devolución ${dev.estado.toLowerCase().replace("_", " ")}. Garantía: ${dev.garantiaEstado.toLowerCase()}${
-        dev.garantiaMotivo ? ` (${dev.garantiaMotivo})` : ""
-      }.${dev.observaciones ? ` Observaciones: ${dev.observaciones}` : ""}`
-    );
-    agregar(dev.creadoEn, "DISPONIBILIDAD", "Entra en lavado", "Tras la devolución el disfraz pasa 3 días hábiles en lavado, planchado y empaquetado.");
-    const fin = liberacionLavado(dev.creadoEn);
-    if (fin <= ahora) agregar(fin, "DISPONIBILIDAD", "Termina el lavado", "El disfraz vuelve a estar disponible para alquilar.");
-
-    for (const dp of dev.prendas) {
-      if (dp.estadoPrenda === "BUEN_ESTADO") continue;
-      if (dp.prenda.disfrazHogarId !== id && dp.prenda.disfrazActualId !== id) continue;
-      const revision = dp.estadoAdmin
-        ? ` Revisión del administrador: ${dp.estadoAdmin === "BUEN_ESTADO" ? "buen estado" : dp.estadoAdmin === "DANADA" ? "dañada" : "faltante"}.`
-        : " Pendiente de revisión del administrador.";
-      agregar(
-        dev.creadoEn,
-        "INCIDENCIA",
-        dp.estadoPrenda === "DANADA" ? "Prenda dañada" : "Prenda faltante",
-        `${dp.prenda.nombre}: el cliente la reportó como ${dp.estadoPrenda === "DANADA" ? "dañada" : "faltante"}.${revision}${
-          dp.observacion ? ` Observación: ${dp.observacion}` : ""
-        }`
-      );
-    }
+    if (a.devolucion) eventosDeDevolucion(id, a.usuario.nombre, a.devolucion, ahora, agregar);
   }
+}
 
-  // Préstamos de prendas entre disfraces.
+// Préstamos de prendas entre disfraces.
+function eventosDePrestamos(id: string, sustituciones: Datos["sustituciones"], nombreDe: (x: string) => string, agregar: Agregar) {
   for (const s of sustituciones) {
-    const devuelto = s.motivo.startsWith("Préstamo devuelto");
-    if (devuelto) {
+    const recibe = s.disfrazDestinoId === id;
+    if (s.motivo.startsWith("Préstamo devuelto")) {
       agregar(
         s.fecha,
         "PRESTAMO",
-        s.disfrazDestinoId === id ? "Prenda devuelta a este disfraz" : "Prenda devuelta a su disfraz de origen",
+        recibe ? "Prenda devuelta a este disfraz" : "Prenda devuelta a su disfraz de origen",
         `${s.prenda.nombre} volvió a su lugar. ${s.motivo}.`
       );
-    } else if (s.disfrazDestinoId === id) {
+    } else if (recibe) {
       agregar(s.fecha, "PRESTAMO", "Prenda recibida en préstamo", `${s.prenda.nombre} llegó desde «${nombreDe(s.disfrazOrigenId)}». ${s.motivo}.`);
     } else {
       agregar(s.fecha, "PRESTAMO", "Prenda prestada a otro disfraz", `${s.prenda.nombre} pasó a «${nombreDe(s.disfrazDestinoId)}». ${s.motivo}.`);
     }
   }
+}
 
-  // Reservas por ajuste de talla (apartan piezas del disfraz por un tiempo).
+// Reservas por ajuste de talla (apartan piezas del disfraz por un tiempo).
+function eventosDeReservas(reservas: Datos["reservas"], agregar: Agregar) {
   for (const r of reservas) {
     agregar(r.creadoEn, "DISPONIBILIDAD", "Reserva por ajuste de talla", "Un cliente apartó piezas del disfraz para ajustarlas a su talla; mientras dura la reserva no se puede alquilar a otra persona.");
     if (r.confirmadaEn) agregar(r.confirmadaEn, "DISPONIBILIDAD", "Ajuste de talla confirmado", "La reserva se convirtió en un alquiler pagado.");
     else if (r.liberadaEn) agregar(r.liberadaEn, "DISPONIBILIDAD", "Reserva liberada", "La reserva venció o se canceló y el disfraz volvió a estar disponible.");
   }
+}
+
+export async function obtenerHistorialDisfraz(id: string) {
+  const datos = await cargarDatos(id);
+  if (!datos) return null;
+  const { disfraz, registrados, alquileres, sustituciones, reservas } = datos;
+
+  const nombres = await nombresDeOtrosDisfraces(id, sustituciones);
+  const nombreDe = (x: string) => nombres.get(x) ?? "otro disfraz";
+
+  const eventos: { cuando: Date; e: Omit<EventoHistorial, "fecha"> }[] = [];
+  const agregar: Agregar = (cuando, categoria, titulo, detalle) => eventos.push({ cuando, e: { categoria, titulo, detalle } });
+
+  eventosDeAlta(disfraz, agregar);
+  eventosRegistrados(registrados, agregar);
+  eventosDeAlquileres(id, alquileres, new Date(), agregar);
+  eventosDePrestamos(id, sustituciones, nombreDe, agregar);
+  eventosDeReservas(reservas, agregar);
 
   eventos.sort((x, y) => x.cuando.getTime() - y.cuando.getTime());
 
