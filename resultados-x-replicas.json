@@ -1,0 +1,9 @@
+{
+  "replicas": "x",
+  "solicitudes": 1446,
+  "reqPorSegundo": 27.02,
+  "promedioMs": 0,
+  "p95Ms": 0,
+  "maxMs": 0,
+  "erroresPct": 100
+}

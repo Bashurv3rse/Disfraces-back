@@ -86,8 +86,25 @@ el límite real es N veces mayor (solución: guardar el contador en Redis o en P
 
 ## 4. Rendimiento (S27)
 
-Vuelve a correr tus k6 PR-01..05 con el seed nuevo (~864 unidades) y compara con `RESULTADOS.md`:
-el catálogo no tiene paginación, así que puede haber cambiado. Completa en el Word los títulos PR-01..05
-que hoy están vacíos con las capturas (consola de k6 y `vmstat`).
+Se conservan los resultados k6 PR-01..05 ya obtenidos (`RESULTADOS.md`). Aclara en el Word que se midieron
+con el seed anterior (menos unidades); con el seed grande el catálogo, que no tiene paginación, supera los 2 s en
+algunas respuestas sin rechazos. Es una mejora futura identificada (paginar `/api/disfraces`).
+Completa en el Word los títulos PR-01..05 con las capturas (consola de k6 y `vmstat`).
 Define tu meta (SLA) y justifícala: la clase usa p95 < 300 ms como ejemplo; si tu VM de 1 GB y la distancia
 Lima–Azure no lo permiten, escribe el umbral que sí corresponde y por qué.
+
+## 5. Servicio aislado: patrón Adapter / Inversión de dependencias (S29)
+
+Stripe (servicio externo) queda aislado detrás del puerto `PasarelaPago` (`src/modules/pagos/pasarela-pago.ts`).
+`StripePasarela` (`stripe.pasarela.ts`) es el adaptador y el único archivo que importa el SDK; `pasarela.config.ts`
+es la raíz de composición. `pagos.service.ts` y `garantia.service.ts` solo conocen el puerto, por lo que pueden
+probarse con una pasarela falsa (Test Double) sin red ni Stripe, y cambiar de proveedor implica escribir otro adaptador.
+
+Evidencias (capturas de la consola):
+```
+npx vitest run tests/funcional/pasarela-aislada.test.ts      # servicios con pasarela falsa; "stripe" prohibido
+npx vitest run tests/funcional/stripe-pasarela.test.ts       # el adaptador traduce a Stripe correctamente
+npx vitest run tests/funcional/arquitectura-pasarela.test.ts # solo stripe.pasarela.ts importa "stripe"
+npm run test:coverage:services                               # cobertura de la lógica de negocio (>80 %)
+```
+Frontend: `npm run test:coverage:logica` mide solo `src/lib` (lógica); `npm run test:coverage` mide todo (lo que lee Sonar).

@@ -1,4 +1,3 @@
-import Stripe from "stripe";
 import { prisma } from "../../config/prisma";
 import { CrearSesionInput } from "./pagos.schema";
 import { crearAlquiler } from "../alquileres/alquileres.service";
@@ -9,8 +8,10 @@ import { cotizar, ErrorCotizacion } from "./precios.service";
 import { extenderReservasDelCarrito, prepararCarrito } from "./carrito.service";
 import { ReservaPerdida, liberarSinConfirmar } from "../a-medida/reservas.base";
 import { registrarEventoSeguridad } from "../../common/logger";
+import { ErrorPasarela, YA_REEMBOLSADO } from "./pasarela-pago";
+import type { PagoRegistrado, SolicitudDeCobro } from "./pasarela-pago";
+import { pasarelaDePago } from "./pasarela.config";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 // Stripe no acepta sesiones de menos de 30 minutos. Con reservas de por medio, la sesión
@@ -53,46 +54,30 @@ export async function crearSesionCheckout(datos: CrearSesionInput, usuarioId: st
   }
 
   // Cada disfraz va como una línea con su total ya calculado (en céntimos enteros), así
-  // la suma en Stripe coincide exactamente con la cotización.
-  const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = cotizacion.lineas.map((l, i) => {
+  // la suma que cobra la pasarela coincide exactamente con la cotización.
+  const lineas = cotizacion.lineas.map((l, i) => {
     const oferta = l.promocion ? `, ${l.promocion.porcentaje}% dto.` : "";
     return {
-      price_data: {
-        currency: "pen",
-        product_data: {
-          name: `Alquiler: ${l.nombre} (S/${l.precioDia.toFixed(2)}/día × ${l.dias} día${l.dias > 1 ? "s" : ""}${oferta})`,
-        },
-        unit_amount: cotizacion.centavos.lineas[i],
-      },
-      quantity: 1,
+      nombre: `Alquiler: ${l.nombre} (S/${l.precioDia.toFixed(2)}/día × ${l.dias} día${l.dias > 1 ? "s" : ""}${oferta})`,
+      centavos: cotizacion.centavos.lineas[i],
     };
   });
 
-  lineItems.push({
-    price_data: {
-      currency: "pen",
-      product_data: { name: "Garantía (25%, reembolsable al devolver en buen estado)" },
-      unit_amount: cotizacion.centavos.garantia,
-    },
-    quantity: 1,
-  });
+  lineas.push({ nombre: "Garantía (25%, reembolsable al devolver en buen estado)", centavos: cotizacion.centavos.garantia });
 
   // Se amplía el plazo de las reservas ANTES de crear la sesión: si alguna ya se perdió, se
   // avisa ahora y no después de que el cliente haya pagado.
   await extenderReservasDelCarrito(reservas, usuarioId);
 
-  const parametros: Stripe.Checkout.SessionCreateParams = {
-    mode: "payment",
-    line_items: lineItems,
-    success_url: `${FRONTEND_URL}/pago-exitoso?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${FRONTEND_URL}/catalogo`,
-    // Stripe genera, al pagar, una factura con su PDF: es la base de la boleta que descarga el cliente.
-    invoice_creation: {
-      enabled: true,
-      invoice_data: { description: "Alquiler de disfraces (incluye garantía reembolsable)", metadata: { usuarioId } },
-    },
+  const solicitud: SolicitudDeCobro = {
+    lineas,
+    moneda: "pen",
+    urlExito: `${FRONTEND_URL}/pago-exitoso?session_id={ID_SESION}`,
+    urlCancelacion: `${FRONTEND_URL}/catalogo`,
+    descripcionComprobante: "Alquiler de disfraces (incluye garantía reembolsable)",
+    usuarioId,
     // La reserva real NO se crea aquí, solo al confirmar el pago (ver confirmarPago).
-    // Los montos cotizados viajan en la sesión: si una oferta cambia mientras el cliente
+    // Los montos cotizados viajan con el cobro: si una oferta cambia mientras el cliente
     // paga, se registra lo que realmente pagó.
     metadata: {
       usuarioId,
@@ -107,12 +92,9 @@ export async function crearSesionCheckout(datos: CrearSesionInput, usuarioId: st
       detalleDescuento: cotizacion.detalleDescuento ?? "",
     },
   };
-  if (reservas.length > 0) {
-    parametros.expires_at = Math.floor(Date.now() / 1000) + MINUTOS_SESION_CON_RESERVA * 60;
-  }
+  if (reservas.length > 0) solicitud.minutosDeVigencia = MINUTOS_SESION_CON_RESERVA;
 
-  const session = await stripe.checkout.sessions.create(parametros);
-  return { url: session.url };
+  return pasarelaDePago().crearCobro(solicitud);
 }
 
 // ¿Alguna de las reservas del carrito ya se liberó o ya no existe? Una reserva sin pagar cuyo
@@ -128,20 +110,18 @@ async function hayReservaPerdida(reservasIds: string[], usuarioId: string): Prom
 // El pago llegó pero las piezas ya no están apartadas (volvieron al almacén). Cobrar un disfraz
 // que no se puede entregar sería lo peor: se reembolsa el pago completo y se explica.
 async function reembolsarPorReservaPerdida(
-  session: Stripe.Checkout.Session,
+  session: PagoRegistrado,
   reservasIds: string[],
   usuarioId: string
 ): Promise<never> {
-  const paymentIntent = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
-
   let reembolsado = false;
-  if (paymentIntent) {
+  if (session.idCobro) {
     try {
       // La clave de idempotencia evita un doble reembolso si el cliente recarga la página.
-      await stripe.refunds.create({ payment_intent: paymentIntent }, { idempotencyKey: `reembolso-reserva-${session.id}` });
+      await pasarelaDePago().reembolsar({ idCobro: session.idCobro, claveIdempotencia: `reembolso-reserva-${session.id}` });
       reembolsado = true;
     } catch (error: any) {
-      if (error?.code === "charge_already_refunded") reembolsado = true;
+      if (error instanceof ErrorPasarela && error.codigo === YA_REEMBOLSADO) reembolsado = true;
       else console.error("No se pudo reembolsar el pago", session.id, error);
     }
   }
@@ -167,11 +147,11 @@ async function reembolsarPorReservaPerdida(
 const INCLUIR_ALQUILER = { disfraces: { include: { disfrazFisico: true } } } as const;
 
 // El pago debe estar cobrado y pertenecer al usuario autenticado (nunca confiar en el session_id sin más).
-function validarSesionPagada(session: Stripe.Checkout.Session, usuarioId: string) {
-  if (session.payment_status !== "paid") {
+function validarSesionPagada(session: PagoRegistrado, usuarioId: string) {
+  if (!session.pagado) {
     throw new Error("El pago aún no se ha confirmado con Stripe");
   }
-  if (session.metadata?.usuarioId !== usuarioId) {
+  if (session.metadata.usuarioId !== usuarioId) {
     throw new Error("Esta sesión de pago no corresponde a tu usuario");
   }
 }
@@ -179,11 +159,11 @@ function validarSesionPagada(session: Stripe.Checkout.Session, usuarioId: string
 // Los montos guardados son los de la cotización original, y deben coincidir con lo que
 // Stripe realmente cobró. Si no, algo se alteró y no se crea el alquiler.
 // Sin esos montos (sesión creada antes de existir los descuentos), el alquiler recalcula su precio.
-function preciosDeLaSesion(session: Stripe.Checkout.Session, meta: Stripe.Metadata): PreciosAlquiler | undefined {
+function preciosDeLaSesion(session: PagoRegistrado, meta: Record<string, string>): PreciosAlquiler | undefined {
   if (!meta.montoTotalCent || !meta.garantiaCent) return undefined;
   const totalCent = Number(meta.montoTotalCent);
   const garantiaCent = Number(meta.garantiaCent);
-  if (session.amount_total !== totalCent + garantiaCent) {
+  if (session.montoTotalCentavos !== totalCent + garantiaCent) {
     throw new Error("El monto cobrado no coincide con la cotización de esta reserva. Contacta a la tienda.");
   }
   return {
@@ -207,14 +187,14 @@ function esReservaPerdida(error: unknown): boolean {
 }
 
 export async function confirmarPago(sessionId: string, usuarioId: string) {
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  const session = await pasarelaDePago().obtenerPago(sessionId);
   validarSesionPagada(session, usuarioId);
 
   // Idempotencia: si el cliente recarga la página de éxito, no se duplica el alquiler.
   const existente = await prisma.alquiler.findUnique({ where: { stripeSessionId: sessionId }, include: INCLUIR_ALQUILER });
   if (existente) return existente;
 
-  const meta = session.metadata!;
+  const meta = session.metadata;
   const disfrazIds: string[] = JSON.parse(meta.disfraces);
   const reservasIds: string[] = meta.reservasIds ? JSON.parse(meta.reservasIds) : [];
   const precios = preciosDeLaSesion(session, meta);
@@ -252,20 +232,14 @@ export interface BoletaPago {
 // Enlace para que el cliente descargue la boleta de un pago suyo. Se apoya en Stripe: primero la
 // factura en PDF; si no existe (pagos hechos antes de activarlas), el recibo del cobro.
 export async function obtenerBoleta(sessionId: string, usuarioId: string): Promise<BoletaPago> {
-  const session = await stripe.checkout.sessions.retrieve(sessionId, {
-    expand: ["invoice", "payment_intent.latest_charge"],
-  });
+  const comprobante = await pasarelaDePago().obtenerComprobante(sessionId);
 
-  if (session.payment_status !== "paid") throw new Error("El pago aún no se ha confirmado con Stripe");
+  if (!comprobante.pagado) throw new Error("El pago aún no se ha confirmado con Stripe");
   // Igual que al confirmar: solo el dueño del pago puede pedir su boleta.
-  if (session.metadata?.usuarioId !== usuarioId) throw new Error("Esta sesión de pago no corresponde a tu usuario");
+  if (comprobante.usuarioId !== usuarioId) throw new Error("Esta sesión de pago no corresponde a tu usuario");
 
-  const factura = session.invoice && typeof session.invoice !== "string" ? session.invoice : null;
-  if (factura?.invoice_pdf) return { tipo: "pdf", url: factura.invoice_pdf };
-
-  const pi = session.payment_intent && typeof session.payment_intent !== "string" ? session.payment_intent : null;
-  const cargo = pi?.latest_charge && typeof pi.latest_charge !== "string" ? pi.latest_charge : null;
-  if (cargo?.receipt_url) return { tipo: "recibo", url: cargo.receipt_url };
+  if (comprobante.facturaPdf) return { tipo: "pdf", url: comprobante.facturaPdf };
+  if (comprobante.reciboUrl) return { tipo: "recibo", url: comprobante.reciboUrl };
 
   throw new Error("Stripe todavía no generó la boleta de este pago. Inténtalo de nuevo en unos segundos.");
 }

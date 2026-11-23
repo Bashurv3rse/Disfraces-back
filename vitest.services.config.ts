@@ -16,6 +16,7 @@ export default defineConfig({
         "src/**/*.service.ts",
         "src/modules/a-medida/reservas.base.ts",
         "src/modules/disfraces/rango.ts",
+        "src/modules/pagos/stripe.pasarela.ts", // adaptador de la pasarela (puerto PasarelaPago)
         "src/common/health.ts",
         "src/common/tallas.ts",
         "src/common/texto.ts",

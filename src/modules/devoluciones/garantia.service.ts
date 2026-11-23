@@ -1,8 +1,6 @@
-import Stripe from "stripe";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
+import { pasarelaDePago } from "../pagos/pasarela.config";
 
 // Error de regla de negocio, con el código HTTP que debe devolver el controller. Nunca 401.
 export class ErrorGarantia extends Error {
@@ -71,25 +69,19 @@ export async function corregirEstadoPrenda(devolucionId: string, prendaId: strin
 // Reembolso de la garantía en Stripe. Seguro de repetir: si ya existe un reembolso de esta devolución, se reutiliza.
 async function reembolsarEnStripe(devolucionId: string, alquilerId: string, sessionId: string, centavos: number): Promise<string> {
   try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    const paymentIntent = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
-    if (!paymentIntent) throw new ErrorGarantia("No se encontró el pago de este alquiler en Stripe.", 409);
+    const pago = await pasarelaDePago().obtenerPago(sessionId);
+    if (!pago.idCobro) throw new ErrorGarantia("No se encontró el pago de este alquiler en Stripe.", 409);
 
-    const previos = await stripe.refunds.list({ payment_intent: paymentIntent, limit: 100 });
-    const existente = previos.data.find(
-      (r) => r.metadata?.devolucionId === devolucionId && r.status !== "failed" && r.status !== "canceled"
-    );
-    if (existente) return existente.id;
+    const previo = await pasarelaDePago().buscarReembolso(pago.idCobro, devolucionId);
+    if (previo) return previo;
 
-    const reembolso = await stripe.refunds.create(
-      {
-        payment_intent: paymentIntent,
-        amount: centavos,
-        reason: "requested_by_customer",
-        metadata: { devolucionId, alquilerId, concepto: "garantia" },
-      },
-      { idempotencyKey: `garantia-${devolucionId}` }
-    );
+    const reembolso = await pasarelaDePago().reembolsar({
+      idCobro: pago.idCobro,
+      centavos,
+      motivo: "solicitado_por_cliente",
+      metadata: { devolucionId, alquilerId, concepto: "garantia" },
+      claveIdempotencia: `garantia-${devolucionId}`,
+    });
     return reembolso.id;
   } catch (error) {
     if (error instanceof ErrorGarantia) throw error;
